@@ -1,0 +1,8 @@
+defaults:
+  - t2tmodel: t2t_vit_7
+  - t2tattn_cfg: null
+  - vitmlp_cfg: null
+
+drop_rate: 0.0
+drop_path_rate: 0.1
+img_size: 224

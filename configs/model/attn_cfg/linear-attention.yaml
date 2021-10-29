@@ -1,0 +1,3 @@
+_target_: src.models.modules.attention.linear_attention.LinearAttention
+# Embed dimension is model.mha_cfg.kdim if available, otherwise model.d_model
+query_dims: ${eval:${oc.select:model.mha_cfg.kdim, ${model.d_model}} // ${model.n_head}}

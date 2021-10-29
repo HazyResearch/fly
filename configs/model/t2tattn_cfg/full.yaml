@@ -1,0 +1,5 @@
+# @package model
+t2tattn1_cfg:
+  _target_: src.models.modules.attention.full_attention.FullAttention
+t2tattn2_cfg:
+  _target_: ${..t2tattn1_cfg._target_}

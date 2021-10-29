@@ -1,0 +1,48 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: null
+  - override /datamodule: imagenet
+  - override /optimizer: sgd
+  - override /scheduler: multi-step
+  - override /callbacks: default.yaml
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 1111
+
+model:
+  _target_: torchvision.models.resnet18
+
+trainer:
+  gpus: 8
+  max_epochs: 90
+  precision: 16
+  accelerator: ddp  # Without this it uses ddp_spawn I think, and there are all sorts of issues
+  plugins:  # To disable find_unused_parameters warning and make DDP a bit faster
+    _target_: pytorch_lightning.plugins.DDPPlugin
+    find_unused_parameters: False
+  benchmark: False  # benchmark=True seems to reduce memory consumption a
+  # little, but no speedup and more likely to lead to NaN loss
+
+datamodule:
+  batch_size: 256  # Per GPU
+  num_workers: 8  # Per GPU
+  dali: cpu
+
+train:
+  global_batch_size: ${eval:${trainer.gpus} * ${datamodule.batch_size}}
+  optimizer:
+    lr: ${eval:0.1 * ${train.global_batch_size} / 256}  # Scale lr linearly wrt batch size
+    momentum: 0.9
+    weight_decay: 6.103515625e-05  # 2^{-14}
+  scheduler:
+    milestones: [30, 60, 80]
+    gamma: 0.1
+  scheduler_interval: epoch

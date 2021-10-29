@@ -1,0 +1,21 @@
+# @package model
+t2tattn1_cfg:
+  _target_: src.models.modules.attention.blocksparse_attention.BlockSparseAttention
+  # seqlen = 3136, and we want to use 1/32 of the memory
+  sparsity_config:
+    _target_: deepspeed.ops.sparse_attention.FixedSparsityConfig
+    num_heads: 1
+    block: 32
+    num_local_blocks: 3
+  attention_dropout: 0.0
+  max_seq_length: 3136
+t2tattn2_cfg:
+  _target_: ${..t2tattn1_cfg._target_}
+  # seqlen = 784, and we want to use 1/32 of the memory
+  sparsity_config:
+    _target_: ${...t2tattn1_cfg.sparsity_config._target_}
+    num_heads: ${...t2tattn1_cfg.sparsity_config.num_heads}
+    block: 16
+    num_local_blocks: 3
+  attention_dropout: 0.0
+  max_seq_length: 784

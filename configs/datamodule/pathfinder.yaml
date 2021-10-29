@@ -1,0 +1,26 @@
+_target_: src.datamodules.pathfinder.PathFinder
+
+# data_dir: ${oc.env:DATA_DIR,${data_dir}}/pathfinder  # data_dir is specified in config.yaml
+# We use the tar archive instead to avoid moving 600k small files
+data_dir: ${oc.env:DATA_DIR,${data_dir}}/pathfinder/pathfinder${.resolution}.tar  # data_dir is specified in config.yaml
+resolution: 32
+level: hard
+sequential: True
+to_int: True
+pool: 1
+val_split: 0.1
+test_split: 0.1
+shuffle: True
+batch_size: 32
+# There's an empty file in the pathfinder32 easy dataset
+# String quote to avoid escaping =, (, and )
+# The interpolation is tricky here: we want 'easy' to be in single quote, but we
+# also want the level to be in single quote so that Python is comparing string
+# to string. For example, we want the expression: 'hard' == 'easy' in Python.
+# So we need to put single quote around '${.level}' so that it evaluates to
+# 'hard' and not to just hard (without quote).
+# Without this quote, Python will evaluate: hard == 'easy' and complains that
+# there's no object called "hard".
+__dataset_len: ${eval:"199999 if ${.resolution} == 32 and '${.level}' == 'easy' else 200000"}
+__train_len: ${eval:"int(${.__dataset_len} * (1 - ${.val_split} - ${.test_split}))"}
+__max_len: ${eval:${.resolution} ** 2 // ${.pool} ** 2} # For passing max_len to pos_encoding etc

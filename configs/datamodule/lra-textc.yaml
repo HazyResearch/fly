@@ -1,0 +1,10 @@
+_target_: src.datamodules.imdb.IMDB
+
+data_dir: ${oc.env:DATA_DIR,${data_dir}}  # data_dir is specified in config.yaml
+cache_dir: ${oc.env:DATA_DIR,${data_dir}}/imdb/cache
+max_length: 4096
+tokenizer_type: char
+shuffle: True
+val_split: 0.0
+batch_size: 64
+__train_len: ${eval:"int(25000 * (1 - ${.val_split}))"}  # String quote to avoid escaping ( and )

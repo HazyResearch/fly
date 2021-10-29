@@ -1,0 +1,3 @@
+# @package _global_
+model:
+  _target_: src.models.vit.t2t_vit.t2t_vit_7

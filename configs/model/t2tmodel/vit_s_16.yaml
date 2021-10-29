@@ -1,0 +1,3 @@
+# @package _global_
+model:
+  _target_: src.models.vit.vit.vit_small_patch16_224

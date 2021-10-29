@@ -1,0 +1,2 @@
+_target_: src.models.modules.attention.local_attention.LocalAttention
+local_context: ???

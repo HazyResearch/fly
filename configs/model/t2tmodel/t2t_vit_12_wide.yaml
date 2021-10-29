@@ -1,0 +1,10 @@
+# @package _global_
+model:
+  # T2T-ViT 7
+  _target_: src.models.vit.t2t_vit.T2T_ViT
+  # TODO: check the qk_scale
+  tokens_type: transformer
+  embed_dim: 768
+  depth: 12
+  num_heads: 12
+  mlp_ratio: 4.0

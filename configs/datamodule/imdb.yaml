@@ -1,0 +1,15 @@
+_target_: src.datamodules.imdb.IMDB
+
+data_dir: ${oc.env:DATA_DIR,${data_dir}}  # data_dir is specified in config.yaml
+cache_dir: ${oc.env:DATA_DIR,${data_dir}}/imdb/cache
+max_length: 512
+tokenizer_type: word
+# This determines the vocab size
+# min_freq=5: vocab ~ 35000
+# min_freq=10: vocab ~ 23000
+# min_freq=20: vocab ~ 15000
+vocab_min_freq: 5
+shuffle: True
+val_split: 0.2
+batch_size: 64
+__train_len: ${eval:"int(25000 * (1 - ${.val_split}))"}  # String quote to avoid escaping ( and )

@@ -1,0 +1,7 @@
+# @package model
+t2tattn1_cfg:
+  _target_: src.models.modules.attention.local_attention.LocalAttention
+  local_context: 98  # seqlen = 3136, and we want to use 1/32 of the memory
+t2tattn2_cfg:
+  _target_: ${..t2tattn1_cfg._target_}
+  local_context: 24  # seqlen = 784, and we want to use 1/32 of the memory

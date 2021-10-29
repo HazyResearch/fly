@@ -1,0 +1,13 @@
+_target_: src.datamodules.cifar.CIFAR10
+
+data_dir: ${oc.env:DATA_DIR,${data_dir}}/cifar # data_dir is specified in config.yaml
+sequential: True
+grayscale: True
+data_augmentation: null
+to_int: True
+shuffle: True
+val_split: 0.1
+# __train_len is only used to compute the number of steps in the lr scheduler.
+# Any config entry that starts with __ will be filtered out in run.py.
+__train_len: ${eval:"int(50000 * (1 - ${.val_split}))"}  # String quote to avoid escaping ( and )
+__max_len: 1024

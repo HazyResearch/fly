@@ -1,0 +1,18 @@
+# @package model
+t2tattn1_cfg:
+  _target_: src.models.modules.attention.linear_attention.LinearAttention
+  query_dims: 64
+  normalization_eps: 0.0  # This is the eps for the linear attention denominator
+  feature_map_cfg:
+    _target_: src.models.modules.attention.performer_feature_map.PerformerFeatures
+    n_features: 49  # seqlen = 3136, and we want to use 1/32 of the memory
+    # Very important that we set eps to very small since we care about approximation quality
+    eps: 0.0  # This is the eps for the softmax kernel
+t2tattn2_cfg:
+  _target_: ${..t2tattn1_cfg._target_}
+  query_dims: ${..t2tattn1_cfg.query_dims}
+  normalization_eps: ${..t2tattn1_cfg.normalization_eps}
+  feature_map_cfg:
+    _target_: ${...t2tattn1_cfg.feature_map_cfg._target_}
+    n_features: 12  # seqlen = 784, and we want to use 1/32 of the memory
+    eps: ${...t2tattn1_cfg.feature_map_cfg.eps}

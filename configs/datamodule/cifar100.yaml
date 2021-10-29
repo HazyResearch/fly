@@ -1,0 +1,9 @@
+_target_: src.datamodules.cifar.CIFAR100
+
+data_dir: ${oc.env:DATA_DIR,${data_dir}}/cifar # data_dir is specified in config.yaml
+data_augmentation: standard
+normalize: True
+shuffle: True
+val_split: 0.1
+batch_size: 64
+__train_len: ${eval:"int(50000 * (1 - ${.val_split}))"}  # String quote to avoid escaping ( and )
