@@ -45,4 +45,10 @@ If you use this codebase, or otherwise found our work valuable, please cite:
   booktitle={Advances in Neural Information Processing Systems (NeurIPS)},
   year={2021}
 }
+@article{chen2021pixelated,
+  title={Pixelated Butterfly: Simple and Efficient Sparse training for Neural Network Models},
+  author={Chen, Beidi and Dao, Tri and Liang, Kaizhao and Yang, Jiaming and Song, Zhao and Rudra, Atri and R{\'e}, Christopher},
+  journal={arXiv preprint arXiv:2112.00029},
+  year={2021}
+}
 ```
