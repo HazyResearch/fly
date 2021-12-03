@@ -1,0 +1,74 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: mixers
+  - override /model/channel_mlp_cfg: null
+  - override /datamodule: imagenet
+  - override /optimizer: adamw
+  - override /scheduler: null
+  - override /callbacks: default
+  - override /metrics: [acc, acctop5]
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 1111
+
+trainer:
+  accelerator: gpu
+  devices: 8
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${datamodule.batch_size}}}
+  max_epochs: ${eval:${train.scheduler.t_initial} + ${train.cooldown_epochs}}
+  precision: 16
+  gradient_clip_val: 1.0
+
+datamodule:
+  batch_size: 512  # Per GPU
+  num_workers: 8  # Per GPU
+  image_size: 224
+  train_transforms:
+    _target_: timm.data.create_transform
+    input_size: ${datamodule.image_size}
+    is_training: True
+    auto_augment: rand-m15-n2  # Use AutoAugment policy
+    interpolation: random
+  val_transforms:  # Taken from model definition in t2t_vit.py
+    _target_: timm.data.create_transform
+    input_size: ${datamodule.image_size}
+    interpolation: bicubic
+    crop_pct: 0.875
+  test_transforms: ${.val_transforms}
+
+train:
+  global_batch_size: 4096
+  optimizer:
+    lr: 2e-3
+    weight_decay: 0.1
+  optimizer_param_grouping:
+    bias_weight_decay: False
+    normalization_weight_decay: False
+  scheduler:
+    _target_: src.optim.timm_lr_scheduler.TimmCosineLRScheduler
+    t_initial: 300
+    lr_min: 1e-5
+    decay_rate: 0.1
+    warmup_lr_init: 1e-4
+    warmup_t: 10
+    cycle_limit: 1
+  scheduler_interval: epoch
+  cooldown_epochs: 10
+  mixup:
+    _target_: src.datamodules.timm_mixup.TimmMixup
+    mixup_alpha: 0.5
+    label_smoothing: 0.1
+  loss_fn:
+    _target_: torch.nn.CrossEntropyLoss
+    # Only if we're not using Mixup
+    # smoothing: 0.1
+  loss_fn_val:
+    _target_: torch.nn.CrossEntropyLoss

@@ -93,6 +93,7 @@ def print_config(
         "model",
         "datamodule",
         "train",
+        "eval",
         "callbacks",
         "logger",
         "seed",

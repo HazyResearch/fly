@@ -1,0 +1,6 @@
+_target_: src.models.modules.layers.mlp.MlpCustom
+drop: 0.1
+linear1_cfg:
+  _target_: src.models.modules.layers.blocksparse_linear.ButterflyBlockdiagLinear
+  nblocks: 16
+linear2_cfg: ${.linear1_cfg}

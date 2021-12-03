@@ -1,0 +1,6 @@
+defaults:
+  - channel_mlp_cfg: null
+
+_target_: src.models.mlp_mixer.mixer_s16_224
+drop_rate: 0.0
+drop_path_rate: 0.1

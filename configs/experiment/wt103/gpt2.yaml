@@ -1,0 +1,56 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: gpt2
+  - override /datamodule: wt103-gpt2
+  - override /optimizer: adamw
+  - override /scheduler: linear-warmup
+  - override /callbacks: default
+  - override /metrics: [perplexity]
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+task:
+  _target_: src.tasks.seq.SequenceLMModel
+
+seed: 1111
+
+trainer:
+  accelerator: gpu
+  devices: 8
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${datamodule.batch_size}}}
+  max_epochs: 100
+  precision: 16
+  gradient_clip_val: 1.0
+  val_check_interval: ${eval:1000 * ${trainer.accumulate_grad_batches}}  # check validation every 1000 batches
+
+datamodule:
+  batch_size: 4  # Per GPU
+  num_workers: 0  # Per GPU
+  block_size: 1024
+
+train:
+  global_batch_size: 512
+  optimizer:
+    lr: 6e-4
+    weight_decay: 0.1
+  optimizer_param_grouping:
+    bias_weight_decay: False
+    normalization_weight_decay: False
+  scheduler:
+    num_warmup_steps: ${div_up:${datamodule.__train_len}, ${train.global_batch_size}}
+    num_training_steps: ${eval:${div_up:${datamodule.__train_len}, ${train.global_batch_size}} * ${trainer.max_epochs}}
+
+callbacks:
+  model_checkpoint:
+    monitor: val/loss
+    mode: min
+  early_stopping:
+    monitor: val/loss
+    mode: min

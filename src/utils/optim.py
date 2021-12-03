@@ -46,6 +46,7 @@ def group_parameters_for_optimizer(model, optimizer_cfg, bias_weight_decay=False
     # separate out all parameters to those that will and won't experience regularizing weight decay
     decay = set()
     no_decay = set()
+    s4 = set()
     whitelist_weight_modules = (nn.Linear, )
     blacklist_weight_modules = (nn.Embedding, PositionalEncoding)
     if not normalization_weight_decay:
@@ -59,7 +60,9 @@ def group_parameters_for_optimizer(model, optimizer_cfg, bias_weight_decay=False
             fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
             if not p.requires_grad:
                 continue  # frozen weights
-            if fpn in skip:
+            if hasattr(p, '_optim'):
+                s4.add(fpn)
+            elif fpn in skip:
                 no_decay.add(fpn)
             elif getattr(p, '_no_weight_decay', False):
                 no_decay.add(fpn)
@@ -77,14 +80,17 @@ def group_parameters_for_optimizer(model, optimizer_cfg, bias_weight_decay=False
     if 'pos_emb' in param_dict:
         no_decay.add('pos_emb')
 
-    decay = decay | (param_dict.keys() - no_decay)
+    # In case of parameter sharing, some parameters show up in decay but are not in param_dict.keys()
+    decay &= param_dict.keys()
+    decay |= (param_dict.keys() - no_decay - s4)
     # validate that we considered every parameter
     inter_params = decay & no_decay
     union_params = decay | no_decay
     assert len(inter_params) == 0, f"Parameters {str(inter_params)} made it into both decay/no_decay sets!"
-    assert len(param_dict.keys() - union_params) == 0, f"parameters {str(param_dict.keys() - union_params)}  were not separated into either decay/no_decay set!"
+    assert len(param_dict.keys() - s4 - union_params) == 0, f"parameters {str(param_dict.keys() - union_params)}  were not separated into either decay/no_decay set!"
 
     return [
         {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
         {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": weight_decay},
+        {"params": [param_dict[pn] for pn in sorted(list(s4))], 'lr': 1e-3, "weight_decay": 0.0},
     ]

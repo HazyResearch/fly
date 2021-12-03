@@ -289,9 +289,10 @@ class Transformer(nn.Module):
 
 class TransformerClassifier(nn.Module):
 
-    def __init__(self, d_model: int, n_head: int, n_layer: int, d_inner: int,
-                 num_classes: int, mha_cfg=None, attn_cfg=None, ffn_cfg=None, embedding_cfg=None,
-                 pos_encoding_cfg=None, norm_first=False,
+    def __init__(self, d_model: int, n_head: int, n_layer: int, d_inner: int, num_classes: int,
+                 mha_cfg=None, attn_cfg=None, ffn_cfg=None, embedding_cfg=None,
+                 pos_encoding_cfg=None, classifier_cfg=None,
+                 norm_first=False,
                  dropout: float = 0.1, activation: str = "relu", layer_norm_eps: float = 1e-5,
                  batch_first: bool = False, pooling_mode='MEAN') -> None:
         super().__init__()
@@ -312,10 +313,16 @@ class TransformerClassifier(nn.Module):
         self.transformer = Transformer(d_model, n_head, n_layer, d_inner, mha_cfg, attn_cfg,
                                        ffn_cfg, dropout, activation, layer_norm_eps,
                                        batch_first, norm_first)
-        self.classifier = ClassificationHead(d_model, d_inner, num_classes,
-                                             pooling_mode=pooling_mode, batch_first=batch_first)
+        if classifier_cfg is None:
+            self.classifier = ClassificationHead(d_model, d_inner, num_classes,
+                                                 pooling_mode=pooling_mode, batch_first=batch_first)
+        else:
+            self.classifier = hydra.utils.instantiate(
+                classifier_cfg, d_model=d_model, d_inner=d_inner, num_classes=num_classes,
+                pooling_mode=pooling_mode, batch_first=batch_first, _recursive_=False
+            )
 
-    def forward(self, src: Tensor, src_mask: Optional[Tensor] = None,
+    def forward_features(self, src: Tensor, src_mask: Optional[Tensor] = None,
                 src_key_padding_mask: Optional[Tensor] = None, lengths=None, **kwargs) -> Tensor:
         if lengths is not None:
             src_key_padding_mask = LengthMask(lengths,
@@ -336,9 +343,39 @@ class TransformerClassifier(nn.Module):
                 assert isinstance(src_mask, FullMask)
                 src_mask = FullMask(F.pad(src_mask._mask, (1, 0, 1, 0), value=True))
         src = self.pos_encoder(src)
-        outputs = self.transformer(src, src_mask=src_mask,
-                                   src_key_padding_mask=src_key_padding_mask, **kwargs)
-        return self.classifier(outputs)
+        features = self.transformer(src, src_mask=src_mask, src_key_padding_mask=src_key_padding_mask,
+                                    **kwargs)
+        return features, src_key_padding_mask
+
+    def forward(self, src: Tensor, src_mask: Optional[Tensor] = None,
+                src_key_padding_mask: Optional[Tensor] = None, lengths=None, **kwargs) -> Tensor:
+        features, src_key_padding_mask = self.forward_features(
+            src, src_mask=src_mask, src_key_padding_mask=src_key_padding_mask, lengths=lengths,
+            **kwargs
+        )
+        return self.classifier(features, key_padding_mask=src_key_padding_mask)
+
+
+class TransformerDualClassifier(TransformerClassifier):
+
+    def forward(self, src1: Tensor, src2: Tensor,
+                src1_mask: Optional[Tensor] = None,
+                src2_mask: Optional[Tensor] = None,
+                src1_key_padding_mask: Optional[Tensor] = None,
+                src2_key_padding_mask: Optional[Tensor] = None,
+                lengths1=None, lengths2=None,
+                **kwargs) -> Tensor:
+        features1, src1_key_padding_mask = self.forward_features(
+            src1, src_mask=src1_mask, src_key_padding_mask=src1_key_padding_mask, lengths=lengths1,
+            **kwargs
+        )
+        features2, src2_key_padding_mask = self.forward_features(
+            src2, src_mask=src2_mask, src_key_padding_mask=src2_key_padding_mask, lengths=lengths2,
+            **kwargs
+        )
+        return self.classifier(features1, features2,
+                               key_padding_mask1=src1_key_padding_mask,
+                               key_padding_mask2=src2_key_padding_mask)
 
 
 def _get_clones(module, N):

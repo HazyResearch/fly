@@ -1,0 +1,13 @@
+# @package model
+mlp_cfg:
+  _target_: src.models.modules.layers.mlp.MlpCustom
+  linear1_cfg:
+    _target_: src.models.modules.layers.blocksparse_linear.BlockSparseLinear
+    sparsity_config:
+      _target_: src.models.modules.layers.fastlinear.NinjaTurtleSparsityConfig
+      block: 16
+      window_size: 16
+      stripes: 1
+      step: 2
+      gtoken: 16
+  linear2_cfg: ${.linear1_cfg}

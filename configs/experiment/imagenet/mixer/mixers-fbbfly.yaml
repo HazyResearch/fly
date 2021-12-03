@@ -1,0 +1,11 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/imagenet/mixer/mixers.yaml
+  - override /model/channel_mlp_cfg: fbbfly
+
+model:
+  drop_path_rate: 0.0

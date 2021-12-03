@@ -1,0 +1,4 @@
+# @package eval.metrics
+acctop5:
+  _target_: torchmetrics.Accuracy
+  top_k: 5

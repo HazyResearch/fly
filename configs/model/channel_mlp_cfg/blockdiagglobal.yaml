@@ -1,0 +1,10 @@
+_target_: src.models.modules.layers.mlp.MlpCustom
+linear1_cfg:
+  _target_: src.models.modules.layers.blocksparse_linear.BlockSparseLinear
+  sparsity_config:
+    _target_: src.models.modules.layers.blocksparse_linear.BlockdiagSparsityConfig
+    nblocks: 4
+    block: 32
+    global_size: 32
+  backend: dense
+linear2_cfg: ${.linear1_cfg}

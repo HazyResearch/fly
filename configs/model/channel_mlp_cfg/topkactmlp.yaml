@@ -1,0 +1,2 @@
+_target_: src.models.modules.layers.mlp.TopkActMlp
+topk_ratio: 0.2

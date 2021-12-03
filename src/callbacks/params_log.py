@@ -1,6 +1,6 @@
 from typing import Any
 
-from pytorch_lightning import Callback, Trainer
+from pytorch_lightning import Callback, Trainer, LightningModule
 from pytorch_lightning.utilities import rank_zero_only
 from pytorch_lightning.utilities.parsing import AttributeDict
 
@@ -20,7 +20,7 @@ class ParamsLog(Callback):
         )
 
     @rank_zero_only
-    def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+    def on_fit_start(self, trainer: Trainer, pl_module: LightningModule) -> None:
         logs = {}
         if self._log_stats.total_params_log:
             logs["model/params_total"] = sum(p.numel() for p in pl_module.parameters())

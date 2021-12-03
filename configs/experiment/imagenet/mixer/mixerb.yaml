@@ -1,0 +1,18 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/imagenet/mixer/mixers.yaml
+
+model:
+  _target_: src.models.mlp_mixer.mixer_b16_224
+
+datamodule:
+  batch_size: 128
+
+train:
+  global_batch_size: 1024
+  optimizer:
+    lr: 2e-3

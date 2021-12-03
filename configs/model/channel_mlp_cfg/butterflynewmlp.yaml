@@ -1,0 +1,4 @@
+_target_: src.models.modules.layers.mlp.ButterflyNewMlp
+drop: 0.1
+window_size: 3
+stripes: 3

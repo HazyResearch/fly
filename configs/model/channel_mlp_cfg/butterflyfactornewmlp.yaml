@@ -1,0 +1,4 @@
+_target_: src.models.modules.layers.mlp.ButterflyFactorNewMlp
+drop: 0.1
+base_size: 2
+butterfly: True

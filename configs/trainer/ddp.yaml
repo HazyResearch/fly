@@ -1,5 +1,6 @@
 defaults:
   - default.yaml
 
-gpus: 4
-accelerator: ddp
+accelerator: gpu
+devices: 4
+strategy: ddp

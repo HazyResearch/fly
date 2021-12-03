@@ -1,6 +1,4 @@
 import math
-from itertools import repeat
-import collections.abc
 
 import torch
 import torch.nn as nn
@@ -9,18 +7,42 @@ import hydra
 
 from einops import reduce, rearrange
 
-# Copied from https://github.com/rwightman/pytorch-image-models/blob/master/timm/models/layers/helpers.py
-# From PyTorch internals
-def _ntuple(n):
-    def parse(x):
-        if isinstance(x, collections.abc.Iterable):
-            return x
-        return tuple(repeat(x, n))
-    return parse
+from src.utils.tuples import to_2tuple
 
 
-to_1tuple = _ntuple(1)
-to_2tuple = _ntuple(2)
+def pooling(x, pooling_mode='CLS', key_padding_mask=None, batch_first=True):
+    if pooling_mode not in ['MEAN', 'SUM', 'CLS']:
+        raise NotImplementedError(f'pooling_mode must be MEAN, SUM, or CLS')
+    if pooling_mode in ['MEAN', 'SUM']:
+        if key_padding_mask is not None:
+            mask = rearrange(~key_padding_mask.bool_matrix,
+                             'b s -> b s 1' if batch_first else 'b s -> s b 1')
+            x = x.masked_fill(mask, 0)
+        return reduce(x, 'b s ... -> b ...' if batch_first else 's b ... -> b ...',
+                      pooling_mode.lower())
+    elif pooling_mode == 'CLS':
+        return x[:, 0] if batch_first else x[0]
+
+
+class ClassificationHeadLinear(nn.Module):
+    """Head for sentence-level classification tasks."""
+
+    def __init__(self, d_model, num_classes, pooling_mode='MEAN',
+                 batch_first=False, **kwargs):
+        super().__init__()
+        assert pooling_mode in ['MEAN', 'SUM', 'CLS'], 'pooling_mode not supported'
+        self.pooling_mode = pooling_mode
+        self.batch_first = batch_first
+        self.out_proj = nn.Linear(d_model, num_classes)
+
+    def forward(self, hidden_states, key_padding_mask=None, **kwargs):
+        """
+            hidden_states: (B, S, D) if batch_first else (S, B, D)
+        """
+        hidden_states = pooling(hidden_states, pooling_mode=self.pooling_mode,
+                                key_padding_mask=key_padding_mask, batch_first=self.batch_first)
+        hidden_states = self.out_proj(hidden_states)
+        return hidden_states
 
 
 # Adapted from https://github.com/huggingface/transformers/blob/master/src/transformers/models/reformer/modeling_reformer.py
@@ -37,16 +59,47 @@ class ClassificationHead(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.out_proj = nn.Linear(d_inner, num_classes)
 
-    def forward(self, hidden_states, **kwargs):
+    def forward(self, hidden_states, key_padding_mask=None, **kwargs):
         """
             hidden_states: (B, S, D) if batch_first else (S, B, D)
         """
-        if self.pooling_mode in ['MEAN', 'SUM']:
-            hidden_states = reduce(hidden_states,
-                                   'b s ... -> b ...' if self.batch_first else 's b ... -> b ...',
-                                   self.pooling_mode.lower())
-        elif self.pooling_mode == 'CLS':
-            hidden_states = hidden_states[:, 0] if self.batch_first else hidden_states[0]
+        hidden_states = pooling(hidden_states, pooling_mode=self.pooling_mode,
+                                key_padding_mask=key_padding_mask, batch_first=self.batch_first)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.dense(hidden_states)
+        # Huggingface uses tanh instead of relu
+        hidden_states = torch.relu(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.out_proj(hidden_states)
+        return hidden_states
+
+
+class ClassificationHeadDual(nn.Module):
+    """Head for sentence-level classification tasks."""
+
+    def __init__(self, d_model, d_inner, num_classes, dropout=0.0, pooling_mode='MEAN',
+                 batch_first=False, interaction='NLI'):
+        super().__init__()
+        assert pooling_mode in ['MEAN', 'SUM', 'CLS'], 'pooling_mode not supported'
+        assert interaction in [None, 'NLI'], 'interaction not supported'
+        self.pooling_mode = pooling_mode
+        self.batch_first = batch_first
+        self.interaction = interaction
+        self.dense = nn.Linear(d_model * (4 if self.interaction == 'NLI' else 2), d_inner)
+        self.dropout = nn.Dropout(dropout)
+        self.out_proj = nn.Linear(d_inner, num_classes)
+
+    def forward(self, hidden_states1, hidden_states2,
+                key_padding_mask1=None, key_padding_mask2=None, **kwargs):
+        """
+            hidden_states: (B, S, D) if batch_first else (S, B, D)
+        """
+        x1 = pooling(hidden_states1, pooling_mode=self.pooling_mode,
+                     key_padding_mask=key_padding_mask1, batch_first=self.batch_first)
+        x2 = pooling(hidden_states2, pooling_mode=self.pooling_mode,
+                     key_padding_mask=key_padding_mask2, batch_first=self.batch_first)
+        hidden_states = (torch.cat([x1, x2, x1 * x2, x1 - x2], dim=-1) if self.interaction == 'NLI'
+                         else torch.cat([x1, x2], dim=-1))
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.dense(hidden_states)
         # Huggingface uses tanh instead of relu

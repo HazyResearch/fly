@@ -1,8 +1,9 @@
 _target_: src.datamodules.pathfinder.PathFinder
 
-# data_dir: ${oc.env:DATA_DIR,${data_dir}}/pathfinder  # data_dir is specified in config.yaml
-# We use the tar archive instead to avoid moving 600k small files
-data_dir: ${oc.env:DATA_DIR,${data_dir}}/pathfinder/pathfinder${.resolution}.tar  # data_dir is specified in config.yaml
+data_dir: ${oc.env:DATA_DIR,${data_dir}}/pathfinder  # data_dir is specified in config.yaml
+# We could use the tar archive instead to avoid moving 600k small files, but
+# data loading is a lot slower
+# data_dir: ${oc.env:DATA_DIR,${data_dir}}/pathfinder/pathfinder${.resolution}.tar
 resolution: 32
 level: hard
 sequential: True

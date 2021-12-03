@@ -1,0 +1,4 @@
+_target_: src.models.modules.layers.mlp.TopkMlp
+drop: 0.1
+window_size: 2
+topk_ratio: 0.1

@@ -5,4 +5,4 @@ batch_size: 32  # per GPU
 max_length: 192
 roll_seed: 2357
 batch_first: True
-__train_len: ${div_up:${eval:103227021 - 1}, ${eval:${.batch_size} * ${.max_length}}}
+__train_len: ${div_up:${eval:103227021 - 1}, ${.max_length}}

@@ -288,7 +288,7 @@ class PathFinder(LightningDataModule):
         else:
             if not (self.data_dir / self.prefix_dir).is_dir():
                 raise FileNotFoundError(f"""
-                Directory {str(self.data_dir)} not found.
+                Directory {str(self.data_dir / self.prefix_dir)} not found.
                 To get the dataset, download lra_release.gz from
                 https://github.com/google-research/long-range-arena,
                 then unzip it with tar -xvf lra_release.gz.

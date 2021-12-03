@@ -1,0 +1,3 @@
+_target_: transformers.AutoModelForCausalLM.from_config
+config:
+  _target_: transformers.GPT2Config

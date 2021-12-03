@@ -151,12 +151,12 @@ class IMDB(LightningDataModule):
         return self._data_loader(self.dataset_test)
 
     def _data_loader(self, dataset: Dataset, shuffle: bool = False) -> DataLoader:
-            return DataLoader(
-                dataset,
-                collate_fn=self.collate_fn,
-                batch_size=self.batch_size,
-                shuffle=shuffle,
-                num_workers=self.num_workers,
-                drop_last=self.drop_last,
-                pin_memory=self.pin_memory
-            )
+        return DataLoader(
+            dataset,
+            collate_fn=self.collate_fn,
+            batch_size=self.batch_size,
+            shuffle=shuffle,
+            num_workers=self.num_workers,
+            drop_last=self.drop_last,
+            pin_memory=self.pin_memory
+        )

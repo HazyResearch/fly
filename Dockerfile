@@ -83,15 +83,18 @@ ENV PIP_NO_CACHE_DIR=1
 # apex and pytorch-fast-transformers take a while to compile so we install them first
 RUN pip install --global-option="--cpp_ext" --global-option="--cuda_ext" git+git://github.com/NVIDIA/apex.git#egg=apex
 # TD [2021-10-28] pytorch-fast-transformers doesn't have a wheel compatible with CUDA 11.3 and Pytorch 1.10
-# So we install from source
+# So we install from source, and change compiler flag -arch=compute_60 -> -arch=compute_70 for V100
 # RUN pip install pytorch-fast-transformers==0.4.0
 # RUN pip install git+git://github.com/idiap/fast-transformers.git@v0.4.0  # doesn't work on V100
-RUN pip install git+git://github.com/idiap/fast-transformers.git
+RUN git clone https://github.com/idiap/fast-transformers \
+    && sed -i 's/\["-arch=compute_60"\]/\["-arch=compute_70"\]/' ~/fast-transformers/setup.py \
+    && pip install ~/fast-transformers/ \
+    && rm -rf fast-transformers
 
 # General packages that we don't care about the version
 # TVM needs decorator for some reason
 # fs for reading tar files
-RUN pip install pytest matplotlib jupyter ipython scikit-learn munch decorator einops pytorch-nlp timm fs
+RUN pip install pytest matplotlib jupyter ipython scikit-learn munch decorator einops pytorch-nlp timm fs fvcore
 # [2021-05-12] We need click==7.1.2 because click 8.0.0 causes error when spacy tries to download
 RUN pip install click==7.1.2 spacy \
     && python -m spacy download en_core_web_sm
@@ -101,23 +104,26 @@ RUN pip install hydra-core==1.1.1 hydra-colorlog==1.1.0 hydra-optuna-sweeper==1.
 # wanbd>=0.10.0 tries to read from ~/.config, and that causes permission error on dawn
 # TVM needs decorator for some reason
 # RUN pip install transformers==4.2.2 datasets==1.2.1 pytorch-lightning==1.1.5 pytorch-lightning-bolts==0.3.0 ray[tune]==1.1.0 hydra-core==1.0.5 wandb==0.10.14 spacy pytorch-nlp munch decorator \
-RUN pip install transformers==4.12.0 datasets==1.14.0 pytorch-lightning==1.4.9 lightning-bolts==0.4.0 deepspeed==0.5.4 triton==1.1.1 wandb==0.12.6
+RUN pip install transformers==4.12.5 datasets==1.15.1 pytorch-lightning==1.5.3 lightning-bolts==0.4.0 deepspeed==0.5.6 triton==1.1.1 wandb==0.12.7
 # deepspeed requires tensorboardX==1.8 but smyrf requires tensorboardX==2.1
 RUN pip install tensorboardX==2.1
 # DALI for ImageNet loading
 # https://docs.nvidia.com/deeplearning/dali/user-guide/docs/installation.html
-# RUN pip install --extra-index-url https://developer.download.nvidia.com/compute/redist nvidia-dali-cuda102==1.6.0
-RUN pip install --extra-index-url https://developer.download.nvidia.com/compute/redist nvidia-dali-cuda110==1.7.0
+RUN pip install --extra-index-url https://developer.download.nvidia.com/compute/redist nvidia-dali-cuda110==1.8.0
 
 # This is for huggingface/examples and smyrf
 RUN pip install tensorboard seqeval psutil sacrebleu rouge-score tensorflow_datasets h5py
-COPY applications/ applications
-RUN pip install applications/smyrf/forks/transformers/ \
-    && pip install applications/smyrf/ \
-    && rm -rf applications/
+# COPY applications/ applications
+# RUN pip install applications/smyrf/forks/transformers/ \
+#     && pip install applications/smyrf/ \
+#     && rm -rf applications/
 
 # This is for nystrom repo
 RUN pip install 'tensorboard>=2.3.0' 'tensorflow-cpu>=2.3.1' 'tensorflow-datasets>=4.0.1'
+
+COPY requirements.txt .
+RUN pip install -r requirements.txt \
+    && rm -f requirements.txt
 
 # This is for swin repo
 RUN pip install 'yacs==0.1.8'

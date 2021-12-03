@@ -1,0 +1,7 @@
+# @package model
+mlp_cfg:
+  _target_: src.models.modules.layers.mlp.MlpCustom
+  linear1_cfg:
+    _target_: src.models.modules.layers.blocksparse_linear.ButterflyBlockdiagLinear
+    nblocks: 4
+  linear2_cfg: ${.linear1_cfg}

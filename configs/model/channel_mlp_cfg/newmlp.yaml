@@ -1,0 +1,2 @@
+_target_: src.models.modules.layers.mlp.NewMlp
+drop: 0.1
