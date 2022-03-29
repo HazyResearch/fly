@@ -81,7 +81,7 @@ ENV PYTHONPATH=/usr/tvm/python:/usr/tvm/topi/python:/usr/tvm/nnvm/python/:/usr/t
 ENV PIP_NO_CACHE_DIR=1
 
 # apex and pytorch-fast-transformers take a while to compile so we install them first
-RUN pip install --global-option="--cpp_ext" --global-option="--cuda_ext" git+git://github.com/NVIDIA/apex.git#egg=apex
+RUN pip install --global-option="--cpp_ext" --global-option="--cuda_ext" git+https://github.com/NVIDIA/apex.git#egg=apex
 # TD [2021-10-28] pytorch-fast-transformers doesn't have a wheel compatible with CUDA 11.3 and Pytorch 1.10
 # So we install from source, and change compiler flag -arch=compute_60 -> -arch=compute_70 for V100
 # RUN pip install pytorch-fast-transformers==0.4.0
