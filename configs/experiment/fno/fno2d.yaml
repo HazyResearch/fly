@@ -1,0 +1,48 @@
+# @package _global_
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: fno2d
+  - override /datamodule: darcy
+  - override /optimizer: adam
+  - override /scheduler: step
+  - override /callbacks: default
+  - override /metrics: [mse]
+  - override /logger: wandb
+
+task:
+  _target_: src.tasks.seq.ModelwNormalizer
+
+seed: 1111
+
+model:
+  modes1: 12
+  modes2: ${.modes1}
+  width: 32
+  padding: 9
+
+trainer:
+  accelerator: gpu
+  devices: 1
+  num_nodes: 1
+  max_epochs: 500
+
+datamodule:
+  batch_size: 20
+  subsampling_rate: 5
+
+train:
+  optimizer:
+    # The best I can get with AdamW (lr 0.01, wd 0.1) is 0.01 val loss
+    # While Adam (lr 1e-3, wd 5e-5) gets 0.008 val loss.
+    lr:  1e-3
+    weight_decay: 5e-5
+  scheduler:
+    step_size: 100
+    gamma: 0.5
+  scheduler_interval: epoch
+  loss_fn:
+    _target_: src.losses.relative_l2.RelativeL2
+
+callbacks:
+  model_checkpoint: null
+  early_stopping: null

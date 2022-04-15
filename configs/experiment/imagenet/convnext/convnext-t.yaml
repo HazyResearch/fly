@@ -1,0 +1,82 @@
+# @package _global_
+# This config replicates # https://github.com/facebookresearch/ConvNeXt/blob/main/TRAINING.md
+
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: null
+  - override /datamodule: imagenet
+  - override /optimizer: adamw
+  - override /scheduler: null
+  - override /callbacks: [default, ema]
+  - override /metrics: [acc, acctop5]
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 1111
+
+model:
+  _target_: timm.models.convnext_tiny
+  drop_path_rate: 0.1
+
+trainer:
+  accelerator: gpu
+  devices: 8
+  num_nodes: 1
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${.devices} * ${datamodule.batch_size} * ${.num_nodes}}}
+  max_epochs: 300
+  precision: 16
+  # strategy: deepspeed_stage_1  # faster and uses less memory than ddp_sharded and deepspeed_stage_2
+
+datamodule:
+  batch_size: 256  # Per GPU
+  num_workers: 8  # Per GPU
+  image_size: 224
+  train_transforms:
+    _target_: timm.data.create_transform
+    input_size: ${datamodule.image_size}
+    is_training: True
+    auto_augment: rand-m9-mstd0.5-inc1  # Use AutoAugment policy
+    interpolation: bicubic
+    re_prob:  0.25  # Random erase prob
+    re_mode: pixel  # Random erase mode
+  val_transforms:
+    _target_: timm.data.create_transform
+    input_size: ${datamodule.image_size}
+    interpolation: bicubic
+    crop_pct: 0.875
+  test_transforms: ${.val_transforms}
+  mixup:
+    _target_: src.datamodules.timm_mixup.TimmMixup
+    mixup_alpha: 0.8
+    cutmix_alpha: 1.0
+    label_smoothing: 0.0  # We're using label smoothing from Pytorch's CrossEntropyLoss
+
+train:
+  global_batch_size: 4096
+  num_steps_per_epoch: ${div_up:${datamodule.__train_len}, ${train.global_batch_size}}
+  optimizer:
+    lr: 4e-3
+    weight_decay: 0.05
+  optimizer_param_grouping:
+    bias_weight_decay: False
+    normalization_weight_decay: False
+  scheduler:
+    _target_: src.optim.timm_lr_scheduler.TimmCosineLRScheduler
+    t_initial: ${eval:${trainer.max_epochs} * ${train.num_steps_per_epoch}}
+    lr_min: 1e-6
+    warmup_lr_init: 1e-6
+    warmup_t: ${eval:20 * ${train.num_steps_per_epoch}}
+    cycle_limit: 1
+    t_in_epochs: False
+  scheduler_interval: step
+  loss_fn:
+    _target_: torch.nn.CrossEntropyLoss
+    label_smoothing: 0.1
+  loss_fn_val:
+    _target_: torch.nn.CrossEntropyLoss
+
+callbacks:
+  ema:
+    decay: 0.9999

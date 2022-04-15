@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - /experiment/lra/retrieval/transformer
+  - override /model/attn_cfg: sblocal
+
+model:
+  attn_cfg:
+    attention_dropout: 0.1
+    local_context: 128
+    nb_features: 64
+    softmax_eps: 1e-4

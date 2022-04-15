@@ -24,16 +24,16 @@ seed: 1111
 trainer:
   accelerator: gpu
   devices: 8
-  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${datamodule.batch_size}}}
+  num_nodes: 1
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${datamodule.batch_size} * ${trainer.num_nodes}}}
   max_epochs: 100
   precision: 16
   gradient_clip_val: 1.0
-  val_check_interval: ${eval:1000 * ${trainer.accumulate_grad_batches}}  # check validation every 1000 batches
+  strategy: deepspeed_stage_1  # faster and uses less memory than ddp_sharded and deepspeed_stage_2
 
 datamodule:
-  batch_size: 4  # Per GPU
-  num_workers: 0  # Per GPU
-  block_size: 1024
+  batch_size: 16  # Per GPU
+  max_length: 1024
 
 train:
   global_batch_size: 512

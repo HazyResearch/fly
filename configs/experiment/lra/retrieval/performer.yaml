@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - /experiment/lra/retrieval/transformer
+  - override /model/attn_cfg: performer
+
+model:
+  attn_cfg:
+    nb_features: 128

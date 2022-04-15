@@ -1,0 +1,23 @@
+# @package _global_
+defaults:
+  - /experiment/imagenet/convnext/convnext-t.yaml
+  - override /datamodule: imagenet21k
+  - override /callbacks: [default]
+
+model:
+  _target_: timm.models.convnext_base
+  drop_path_rate: 0.1
+
+trainer:
+  max_epochs: 90
+
+datamodule:
+  mixup:
+    num_classes: ${datamodule.__num_classes}
+
+train:
+  scheduler:
+    warmup_t: ${eval:5 * ${train.num_steps_per_epoch}}
+
+callbacks:
+  ema: null

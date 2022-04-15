@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - /experiment/imagenet/vit/vit-s.yaml
+  - override /model/vitmlp_cfg: fbbflylr
+
+model:
+  attnlinear_cfg: ${model.mlp_cfg.linear1_cfg}
+  drop_path_rate: 0.0

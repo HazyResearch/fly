@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - /experiment/bert/bertlarge.yaml
+
+model:
+  config:
+    last_layer_subset: True
+
+datamodule:
+  batch_size: ${eval:"256 if ${train.phase} == 1 else 56"}  # Per GPU

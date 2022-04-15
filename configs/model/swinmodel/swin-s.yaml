@@ -1,0 +1,7 @@
+# @package _global_
+model:
+  drop_path_rate: 0.3
+  embed_dim: 96
+  depths: [2, 2, 18, 2]
+  num_heads: [3, 6, 12, 24]
+  window_size: 7

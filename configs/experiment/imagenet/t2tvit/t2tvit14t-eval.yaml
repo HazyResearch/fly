@@ -1,0 +1,39 @@
+# @package _global_
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: t2tvit
+  - override /model/t2tmodel: t2t_vit_14_t
+  - override /model/t2tattn_cfg: full  # Options: performer, local, sblocal, etc.
+  - override /datamodule: imagenet
+  - override /scheduler: null
+  - override /callbacks: params-log
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+seed: 1111
+
+trainer:
+  accelerator: gpu
+  devices: 1
+
+datamodule:
+  batch_size: 128  # Per GPU
+  num_workers: 8  # Per GPU
+  image_size: 224
+  val_transforms:  # Taken from model definition in t2t_vit.py
+    _target_: timm.data.create_transform
+    input_size: ${datamodule.image_size}
+    interpolation: bicubic
+    crop_pct: 0.9
+  test_transforms: ${.val_transforms}
+
+mode: eval
+
+eval:
+  checkpoint_type: pytorch
+  # ckpt: ${oc.env:CHECKPOINT_DIR}/t2tvit/71.7_T2T_ViT_7.pth.tar
+  ckpt: ${oc.env:CHECKPOINT_DIR}/t2tvit/81.7_T2T_ViTt_14.pth.tar
+  run_val: False  # val and test are the same for ImageNet
+  run_test: True

@@ -1,0 +1,14 @@
+_target_: src.models.attention.combination_attention.CombinationAttention
+# Embed dimension is model.mha_cfg.kdim if available, otherwise model.d_model
+d_head: ${eval:${oc.select:model.mha_cfg.kdim, ${model.d_model}} // ${model.n_head}}
+n_heads: ${model.n_head}
+gating: True
+attn_cfg_0:
+  _target_: src.models.attention.smyrf_attention.SmyrfAttention
+  n_hashes: ???
+  q_cluster_size: ???
+  k_cluster_size: ???
+attn_cfg_1:
+  _target_: src.models.attention.performer_attention.PerformerAttention
+  # Embed dimension is model.mha_cfg.kdim if available, otherwise model.d_model
+  dim_heads: ${..d_head}

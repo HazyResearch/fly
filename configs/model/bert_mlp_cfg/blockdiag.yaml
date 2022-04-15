@@ -1,0 +1,4 @@
+linear1_cfg:
+  _target_: src.models.layers.blockdiag_linear.BlockdiagLinear
+  nblocks: 4
+linear2_cfg: ${.linear1_cfg}

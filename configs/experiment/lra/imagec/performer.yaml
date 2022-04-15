@@ -1,0 +1,12 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/lra/imagec/transformer
+  - override /model/attn_cfg: performer
+
+model:
+  attn_cfg:
+    nb_features: 32

@@ -1,0 +1,15 @@
+# @package model
+mlp_cfg:
+  _target_: src.models.layers.mlp.MlpCustom
+  linear1_cfg:
+    _target_: src.models.layers.fastlinear.SparseLRLinear
+    rank: 32
+    sparse_cfg:
+      _target_: src.models.layers.blocksparse_linear.BlockSparseLinear
+      sparsity_config:
+        _target_: src.models.layers.blocksparse_linear.FlatBlockButterflySparsityConfig
+        block: 32
+        butterfly_size: 16
+        n_factors: 2
+      backend: dense
+  linear2_cfg: ${.linear1_cfg}

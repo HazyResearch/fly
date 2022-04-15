@@ -1,0 +1,15 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/lra/textc/transformer
+  - override /model/attn_cfg: topk
+
+model:
+  attn_cfg:
+    attention_dropout: 0.1
+    topk: 64
+  # MEAN and CLS pooling_mode works about the same, maybe MEAN is a bit better
+  pooling_mode: MEAN

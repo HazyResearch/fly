@@ -1,4 +1,4 @@
-_target_: src.models.modules.layers.mlp.SLMlp
+_target_: src.models.layers.mlp.SLMlp
 drop: 0.1
 window_size: 3
 stripes_1: 3

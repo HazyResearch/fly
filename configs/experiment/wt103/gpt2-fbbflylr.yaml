@@ -1,0 +1,8 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/wt103/gpt2.yaml
+  - override /model/gpt2_mlp_cfg@model.mlp_cfg: fbbflylr

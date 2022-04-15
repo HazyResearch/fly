@@ -6,8 +6,10 @@
 defaults:
   - /experiment/imagenet/mixer/mixerb.yaml
 
-train:
+datamodule:
   mixup:
     cutmix_alpha: 0.6
+
+train:
   optimizer:
     weight_decay: 0.05

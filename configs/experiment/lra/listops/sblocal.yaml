@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - /experiment/lra/listops/transformer
+  - override /model/attn_cfg: sblocal
+
+model:
+  attn_cfg:
+    attention_dropout: 0.1
+    local_context: 64
+    nb_features: 32
+    softmax_eps: 1e-4

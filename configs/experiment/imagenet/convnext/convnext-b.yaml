@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - /experiment/imagenet/convnext/convnext-t.yaml
+
+model:
+  _target_: timm.models.convnext_base
+  drop_path_rate: 0.5
+
+datamodule:
+  batch_size: 128

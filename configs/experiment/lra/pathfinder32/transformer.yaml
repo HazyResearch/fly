@@ -1,0 +1,52 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: transformer-classifier
+  - override /model/attn_cfg: full
+  - override /datamodule: pathfinder
+  - override /scheduler: cosine-warmup
+  - override /callbacks: default.yaml
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+model:
+  d_model: 64
+  n_head: 2
+  n_layer: 2
+  d_inner: 128
+  dropout: 0.2
+  mha_cfg:
+    kdim: 32
+    vdim: ${.kdim}
+  pos_encoding_cfg:
+    # max_len: 1024
+    max_len: ${datamodule.__max_len}
+  pooling_mode: MEAN
+
+seed: 1111
+
+trainer:
+  accelerator: gpu
+  devices: 1
+  max_epochs: 200
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${datamodule.batch_size}}}
+
+train:
+  global_batch_size: 512
+  optimizer:
+    lr: 0.001
+    betas: [0.9, 0.98]
+    weight_decay: 0.0
+  scheduler:
+    num_warmup_steps: ${div_up:${datamodule.__train_len}, ${train.global_batch_size}}
+    num_training_steps: ${eval:${div_up:${datamodule.__train_len}, ${train.global_batch_size}} * ${trainer.max_epochs}}
+
+datamodule:
+  batch_size: 512
+  num_workers: 4

@@ -1,0 +1,11 @@
+_target_: src.models.mlp_mixer.MlpMixer
+defaults:
+  - token_mlp_cfg: mlp
+  - channel_mlp_cfg: mlp
+patch_size: 4
+num_blocks: 12
+img_size: 32
+embed_dim: 768
+drop_rate: 0.1
+mlp_ratio: [0.5, 4.0]
+factor: null

@@ -1,0 +1,11 @@
+# @package eval.metrics
+# We just want torchmetrics.F1Score(num_classes=2, average='none')[-1]
+# This is an obscure way to do that with operator.getitem so hydra.utils.instantiate works
+f1:
+  _target_: operator.getitem
+  _recursive_: True
+  _args_:
+    - _target_: torchmetrics.F1Score
+      num_classes: 2
+      average: 'none'
+    - -1

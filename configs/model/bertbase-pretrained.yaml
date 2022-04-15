@@ -1,0 +1,5 @@
+_target_: src.models.bert.BertForSequenceClassification.from_pretrained
+pretrained_model_name_or_path: bert-base-uncased
+config:
+  _target_: transformers.AutoConfig.from_pretrained
+  pretrained_model_name_or_path: ${..pretrained_model_name_or_path}

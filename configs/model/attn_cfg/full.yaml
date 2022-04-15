@@ -1,1 +1,1 @@
-_target_: src.models.modules.attention.full_attention.FullAttention
+_target_: src.models.attention.full_attention.FullAttention

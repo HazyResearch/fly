@@ -1,6 +1,6 @@
 # @package model
 t2tattn1_cfg:
-  _target_: src.models.modules.attention.sblocal_attention.SBLocalAttention
+  _target_: src.models.attention.sblocal_attention.SBLocalAttention
   dim_heads: 64
   local_context: 49  # seqlen = 3136, and we want to use 1/32 of the memory
   nb_features: 24

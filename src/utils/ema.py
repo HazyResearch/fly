@@ -10,6 +10,10 @@ import contextlib
 import torch
 
 
+def to_float_maybe(x):
+    return x.float() if x.dtype in [torch.float16, torch.bfloat16] else x
+
+
 # Partially based on:
 # https://github.com/tensorflow/tensorflow/blob/r1.13/tensorflow/python/training/moving_averages.py
 class ExponentialMovingAverage:
@@ -33,7 +37,7 @@ class ExponentialMovingAverage:
         self.decay = decay
         self.num_updates = 0 if use_num_updates else None
         parameters = list(parameters)
-        self.shadow_params = [p.clone().detach()
+        self.shadow_params = [to_float_maybe(p.clone().detach())
                               for p in parameters if p.requires_grad]
         self.collected_params = None
         # By maintaining only a weakref to each parameter,
@@ -95,10 +99,7 @@ class ExponentialMovingAverage:
         with torch.no_grad():
             parameters = [p for p in parameters if p.requires_grad]
             for s_param, param in zip(self.shadow_params, parameters):
-                tmp = (s_param - param)
-                # tmp will be a new tensor so we can do in-place
-                tmp.mul_(one_minus_decay)
-                s_param.sub_(tmp)
+                torch.lerp(s_param, param.to(dtype=s_param.dtype), one_minus_decay, out=s_param)
 
     def copy_to(
         self,
@@ -255,7 +256,7 @@ class ExponentialMovingAverage:
                 "collected_params and shadow_params had different lengths"
 
         if len(self.shadow_params) == len(self._params_refs):
-            # Consistant with torch.optim.Optimizer, cast things to consistant
+            # Consistent with torch.optim.Optimizer, cast things to consistent
             # device and dtype with the parameters
             params = [p() for p in self._params_refs]
             # If parameters have been garbage collected, just load the state
@@ -263,9 +264,9 @@ class ExponentialMovingAverage:
             if not any(p is None for p in params):
                 # ^ parameter references are still good
                 for i, p in enumerate(params):
-                    self.shadow_params[i] = self.shadow_params[i].to(
+                    self.shadow_params[i] = to_float_maybe(self.shadow_params[i].to(
                         device=p.device, dtype=p.dtype
-                    )
+                    ))
                     if self.collected_params is not None:
                         self.collected_params[i] = self.collected_params[i].to(
                             device=p.device, dtype=p.dtype

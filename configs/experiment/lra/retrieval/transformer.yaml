@@ -1,0 +1,55 @@
+# @package _global_
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: transformer-classifier
+  - override /model/attn_cfg: full
+  - override /datamodule: aan
+  - override /scheduler: invsqrt
+  - override /callbacks: default.yaml
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+task:
+  _target_: src.tasks.seq.SequenceDualModel
+
+model:
+  _target_: src.models.transformer.TransformerDualClassifier
+  d_model: 64
+  n_head: 2
+  n_layer: 2
+  d_inner: 128
+  dropout: 0.1
+  pos_encoding_cfg:
+    max_len: ${datamodule.max_length}
+    # Making positional encoding learnable improves performance a lot (e.g. 73% -> 81%)
+    initializer:  # learnable positional encoding
+      _target_: torch.nn.init.normal_
+      std: 0.02
+  # MEAN pooling seems better for this task
+  pooling_mode: MEAN
+  classifier_cfg:
+    _target_: src.models.modules.seq_common.ClassificationHeadDual
+    interaction: NLI
+
+seed: 1111
+
+trainer:
+  accelerator: gpu
+  devices: 1
+  max_epochs: 10
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${datamodule.batch_size}}}
+
+train:
+  global_batch_size: 32
+  optimizer:
+    lr: 0.05
+    betas: [0.9, 0.98]
+    weight_decay: 0.1
+  scheduler:
+    num_warmup_steps: 8000
+
+datamodule:
+  max_length: 4000
+  batch_size: 32

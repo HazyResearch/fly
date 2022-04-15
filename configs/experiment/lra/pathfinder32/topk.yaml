@@ -1,0 +1,20 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/lra/pathfinder32/transformer
+  - override /model/attn_cfg: topk
+
+model:
+  attn_cfg:
+    attention_dropout: 0.2
+    topk: 64
+  # It's important to use mean pooling and not CLS token, as the CLS token won't
+  # be connected to tokens beyond the local context. We don't want to classify
+  # based on just the top 64 characters.
+  pooling_mode: MEAN
+
+datamodule:
+  batch_size: 128

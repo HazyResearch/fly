@@ -6,4 +6,5 @@ normalize: True
 shuffle: True
 val_split: 0.1
 batch_size: 64
+num_workers: 4
 __train_len: ${eval:"int(50000 * (1 - ${.val_split}))"}  # String quote to avoid escaping ( and )

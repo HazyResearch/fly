@@ -1,0 +1,5 @@
+_target_: src.datamodules.fno.Burgers
+data_dir: ${oc.env:DATA_DIR,${data_dir}}/fno/  # data_dir is specified in config.yaml
+ntrain: 1000
+shuffle: True
+__train_len: ${.ntrain}

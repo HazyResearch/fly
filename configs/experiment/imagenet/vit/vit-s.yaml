@@ -1,0 +1,20 @@
+# @package _global_
+defaults:
+  - /experiment/imagenet/t2tvit/t2tvit7.yaml
+  - override /model/t2tmodel: vit_s_16
+  - override /callbacks: default
+
+trainer:
+  precision: 16
+
+datamodule:
+  batch_size: 128  # Per GPU
+
+train:
+  global_batch_size: 1024
+  optimizer:
+    lr: 1e-3
+    weight_decay: 0.05
+
+callbacks:
+  ema: null

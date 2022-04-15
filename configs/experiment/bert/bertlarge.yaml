@@ -1,0 +1,7 @@
+# @package _global_
+defaults:
+  - /experiment/bert/bertbase.yaml
+  - override /model/bertmodel: bertlarge
+
+datamodule:
+  batch_size: ${eval:"64 if ${train.phase} == 1 else 16"}  # Per GPU

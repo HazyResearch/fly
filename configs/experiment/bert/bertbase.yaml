@@ -1,0 +1,68 @@
+# @package _global_
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: bert
+  - override /model/bertmodel: bertbase
+  - override /datamodule: bert
+  # TD [2022-02-17] fusedlamb from apex gives me error about CUDA illegal memory access
+  - override /optimizer: fusedlamb-ds
+  - override /scheduler: poly-warmup
+  - override /callbacks: default
+  - override /metrics: null  # metrics are defined in the task (src.tasks.seq.BERTModel)
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+task:
+  _target_: src.tasks.seq.BERTModel
+
+seed: 1111
+
+trainer:
+  accelerator: gpu
+  devices: 8
+  num_nodes: 1
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${datamodule.batch_size} * ${trainer.num_nodes}}}
+  max_steps: ${eval:"7038 if ${train.phase} == 1 else 1563"}
+  val_check_interval: ${eval:"(200 if ${train.phase} == 1 else 50) * ${.accumulate_grad_batches}"}
+  precision: 16
+  strategy: deepspeed_stage_1  # faster and uses less memory than ddp_sharded and deepspeed_stage_2
+
+datamodule:
+  max_length: ${eval:"128 if ${train.phase} == 1 else 512"}
+  batch_size: ${eval:"256 if ${train.phase} == 1 else 32"}  # Per GPU
+
+train:
+  phase: 1
+  global_batch_size: ${eval:"65536 if ${train.phase} == 1 else 32768"}
+  optimizer:
+    lr: ${eval:"5e-3 if ${train.phase} == 1 else 3.7e-3"}
+    weight_decay: 0.01
+  optimizer_param_grouping:
+    bias_weight_decay: False
+    normalization_weight_decay: False
+  scheduler:
+    power: 0.5
+    num_warmup_steps: ${eval:"2000 if ${train.phase} == 1 else 200"}
+    num_training_steps: ${trainer.max_steps}
+
+callbacks:
+  model_checkpoint:
+    monitor: val/loss
+    mode: min
+    save_top_k: 3
+    save_last: True
+    every_n_train_steps: ${eval:"200 if ${train.phase} == 1 else 50"}
+    dirpath: ${work_dir}/checkpoints/${oc.select:name,''}
+    filename: step_{step}
+    auto_insert_metric_name: False
+  model_checkpoint_progress:
+    _target_: pytorch_lightning.callbacks.ModelCheckpoint
+    every_n_train_steps: ${eval:"700 if ${train.phase} == 1 else 150"}
+    save_last: False
+    save_top_k: -1  # Save all the checkpoints
+    dirpath: ${..model_checkpoint.dirpath}
+    filename: progress_step_{step}
+    auto_insert_metric_name: False
+  early_stopping: null

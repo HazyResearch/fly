@@ -1,13 +1,13 @@
 # @package model
 mlp_cfg:
-  _target_: src.models.modules.layers.mlp.MlpCustom
+  _target_: src.models.layers.mlp.MlpCustom
   linear1_cfg:
-    _target_: src.models.modules.layers.fastlinear.SparseLRLinear
+    _target_: src.models.layers.fastlinear.SparseLRLinear
     rank: 64
     sparse_cfg:
-      _target_: src.models.modules.layers.blocksparse_linear.BlockSparseLinear
+      _target_: src.models.layers.blocksparse_linear.BlockSparseLinear
       sparsity_config:
-        _target_: src.models.modules.layers.fastlinear.NinjaTurtleSparsityConfig
+        _target_: src.models.layers.fastlinear.NinjaTurtleSparsityConfig
         block: 32
         window_size: 32
         stripes: 2

@@ -1,0 +1,11 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/imagenet/swin/swinmlp-t-c24.yaml
+  - override /model/swinmlpmodel: swinmlp-b
+
+datamodule:
+  image_size: 224

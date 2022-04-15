@@ -1,2 +1,4 @@
-_target_: src.models.modules.attention.smyrf_attention.SmyrfAttention
+_target_: src.models.attention.smyrf_attention.SmyrfAttention
 n_hashes: ???
+q_cluster_size: ???
+k_cluster_size: ???

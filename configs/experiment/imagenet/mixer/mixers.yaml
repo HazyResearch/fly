@@ -43,6 +43,10 @@ datamodule:
     interpolation: bicubic
     crop_pct: 0.875
   test_transforms: ${.val_transforms}
+  mixup:
+    _target_: src.datamodules.timm_mixup.TimmMixup
+    mixup_alpha: 0.5
+    label_smoothing: 0.0
 
 train:
   global_batch_size: 4096
@@ -56,19 +60,13 @@ train:
     _target_: src.optim.timm_lr_scheduler.TimmCosineLRScheduler
     t_initial: 300
     lr_min: 1e-5
-    decay_rate: 0.1
     warmup_lr_init: 1e-4
     warmup_t: 10
     cycle_limit: 1
   scheduler_interval: epoch
   cooldown_epochs: 10
-  mixup:
-    _target_: src.datamodules.timm_mixup.TimmMixup
-    mixup_alpha: 0.5
-    label_smoothing: 0.1
   loss_fn:
     _target_: torch.nn.CrossEntropyLoss
-    # Only if we're not using Mixup
-    # smoothing: 0.1
+    label_smoothing: 0.1
   loss_fn_val:
     _target_: torch.nn.CrossEntropyLoss

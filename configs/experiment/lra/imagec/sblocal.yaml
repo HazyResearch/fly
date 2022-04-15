@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - /experiment/lra/imagec/transformer
+  - override /model/attn_cfg: sblocal
+
+model:
+  attn_cfg:
+    attention_dropout: 0.2
+    local_context: 32
+    nb_features: 16
+    softmax_eps: 1e-4

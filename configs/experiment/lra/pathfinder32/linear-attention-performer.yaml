@@ -1,0 +1,14 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/lra/pathfinder32/transformer
+  - override /model/attn_cfg: linear-attention
+
+model:
+  attn_cfg:
+    feature_map_cfg:
+      _target_: src.models.attention.performer_feature_map.PerformerFeatures
+      n_features: 32

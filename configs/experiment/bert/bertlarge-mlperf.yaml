@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - /experiment/bert/bertlarge.yaml
+
+datamodule:
+  batch_size: ${eval:"192 if ${train.phase} == 1 else 48"}  # Per GPU
+
+model:
+  config:
+    last_layer_subset: False
+
+trainer:
+  amp_level: O2
+  amp_backend: apex
+  strategy: null

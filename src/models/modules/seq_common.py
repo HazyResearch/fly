@@ -11,8 +11,8 @@ from src.utils.tuples import to_2tuple
 
 
 def pooling(x, pooling_mode='CLS', key_padding_mask=None, batch_first=True):
-    if pooling_mode not in ['MEAN', 'SUM', 'CLS']:
-        raise NotImplementedError(f'pooling_mode must be MEAN, SUM, or CLS')
+    if pooling_mode not in ['MEAN', 'SUM', 'CLS', 'FLATTEN']:
+        raise NotImplementedError(f'pooling_mode must be MEAN, SUM, CLS, FLATTEN')
     if pooling_mode in ['MEAN', 'SUM']:
         if key_padding_mask is not None:
             mask = rearrange(~key_padding_mask.bool_matrix,
@@ -22,6 +22,8 @@ def pooling(x, pooling_mode='CLS', key_padding_mask=None, batch_first=True):
                       pooling_mode.lower())
     elif pooling_mode == 'CLS':
         return x[:, 0] if batch_first else x[0]
+    elif pooling_mode == 'FLATTEN':
+        return rearrange(x, 'b ... -> b (...)' if batch_first else 's b ... -> b (s ...)')
 
 
 class ClassificationHeadLinear(nn.Module):
@@ -30,7 +32,7 @@ class ClassificationHeadLinear(nn.Module):
     def __init__(self, d_model, num_classes, pooling_mode='MEAN',
                  batch_first=False, **kwargs):
         super().__init__()
-        assert pooling_mode in ['MEAN', 'SUM', 'CLS'], 'pooling_mode not supported'
+        assert pooling_mode in ['MEAN', 'SUM', 'CLS', 'FLATTEN'], 'pooling_mode not supported'
         self.pooling_mode = pooling_mode
         self.batch_first = batch_first
         self.out_proj = nn.Linear(d_model, num_classes)
@@ -52,7 +54,7 @@ class ClassificationHead(nn.Module):
     def __init__(self, d_model, d_inner, num_classes, dropout=0.0, pooling_mode='MEAN',
                  batch_first=False):
         super().__init__()
-        assert pooling_mode in ['MEAN', 'SUM', 'CLS'], 'pooling_mode not supported'
+        assert pooling_mode in ['MEAN', 'SUM', 'CLS', 'FLATTEN'], 'pooling_mode not supported'
         self.pooling_mode = pooling_mode
         self.batch_first = batch_first
         self.dense = nn.Linear(d_model, d_inner)

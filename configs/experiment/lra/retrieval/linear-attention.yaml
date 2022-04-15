@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - /experiment/lra/retrieval/transformer
+  - override /model/attn_cfg: linear-attention

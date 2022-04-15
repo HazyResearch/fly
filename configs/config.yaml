@@ -41,6 +41,8 @@ ignore_warnings: True
 # lightning chooses best model based on metric specified in checkpoint callback
 test_after_training: True
 
+resume: False
+
 # seed for random number generators in pytorch, numpy and python.random
 seed: null
 

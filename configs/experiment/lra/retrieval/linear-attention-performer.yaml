@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - /experiment/lra/retrieval/transformer
+  - override /model/attn_cfg: linear-attention
+
+model:
+  attn_cfg:
+    feature_map_cfg:
+      _target_: src.models.attention.performer_feature_map.PerformerFeatures
+      n_features: 128

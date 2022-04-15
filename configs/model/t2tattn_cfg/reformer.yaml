@@ -1,0 +1,11 @@
+# @package model
+t2tattn1_cfg:
+  _target_: src.models.attention.reformer_attention.ReformerAttention
+  # seqlen = 3136, and we want to use 1/32 of the memory
+  bucket_size: 49
+  n_hashes: 2
+t2tattn2_cfg:
+  _target_: ${..t2tattn1_cfg._target_}
+  # seqlen = 784, and we want to use 1/32 of the memory
+  bucket_size: 12
+  n_hashes: 2

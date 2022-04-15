@@ -2,12 +2,13 @@
 # and https://github.com/yitu-opensource/T2T-ViT/blob/main/models/transformer_block.py
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from einops import rearrange
 
 import hydra
 
-from timm.models.layers import DropPath
+from torchvision.ops import StochasticDepth
 
 from src.models.modules.seq_common import Mlp
 
@@ -32,7 +33,7 @@ class AttentionSimple(nn.Module):
         self.scale = qk_scale or head_dim ** -0.5
 
         if linear_cfg is not None:
-            packed_linear = True
+            packed_linear = False
         self.packed_linear = packed_linear
         if packed_linear:
             self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
@@ -59,8 +60,18 @@ class AttentionSimple(nn.Module):
             q, k, v = self.q_proj(x), self.k_proj(x), self.v_proj(x)
             q, k, v = [rearrange(x, 'b n (h d) -> b h n d', h=self.num_heads) for x in (q, k, v)]
 
-        attn = (q @ k.transpose(-2, -1)) * self.scale
-        attn = attn.softmax(dim=-1)
+        # attn = (q @ k.transpose(-2, -1) * self.scale)
+        # Use `torch.baddbmm` (a bit more efficient w/ alpha param for scaling -- from Megatron-LM)
+        bsz, num_heads, q_seq_len, dk = q.size()
+        _, _, k_seq_len, _ = k.size()
+        q = rearrange(q, 'b h t d -> (b h) t d')
+        k = rearrange(k, 'b h s d -> (b h) d s')
+        # Preallocate attn_weights for `baddbmm`
+        attn = torch.empty(bsz * num_heads, q_seq_len, k_seq_len, dtype=q.dtype, device=q.device)
+        attn = rearrange(torch.baddbmm(attn, q, k, beta=0, alpha=self.scale),
+                         '(b h) t s -> b h t s', h = self.num_heads)
+
+        attn = F.softmax(attn, dim=-1, dtype=v.dtype)
         attn = self.attn_drop(attn)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
@@ -79,7 +90,7 @@ class Block(nn.Module):
         self.attn = AttentionSimple(
             dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale, attn_drop=attn_drop, proj_drop=drop,
             linear_cfg=attnlinear_cfg)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = StochasticDepth(drop_path, mode='row')
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
         if mlp_cfg is None:

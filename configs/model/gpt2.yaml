@@ -1,3 +1,16 @@
-_target_: transformers.AutoModelForCausalLM.from_config
+defaults:
+  - _self_
+  - gpt2model: gpt2-small
+  - gpt2_mlp_cfg@mlp_cfg: mlp
+
+_target_: src.models.gpt2.GPT2LMHeadModel
 config:
   _target_: transformers.GPT2Config
+  # Mistral's config: https://github.com/stanford-crfm/mistral/blob/main/conf/models/gpt2-small.yaml
+  # However, reorder_and_upcast_attn slows things down
+  reorder_and_upcast_attn: false
+  scale_attn_by_inverse_layer_idx: true
+
+mlp_cfg:
+  # GPT doesn't have dropout between FC1 and FC2
+  drop_btw_fcs: False

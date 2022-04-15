@@ -1,0 +1,31 @@
+# @package model
+t2tattn1_cfg:
+  _target_: src.models.attention.combination_attention.CombinationAttention
+  d_head: 64
+  n_heads: 1
+  gating: False
+  # seqlen = 3136, and we want to use 1/32 of the memory
+  attn_cfg_0:
+    _target_: src.models.attention.smyrf_attention.SmyrfAttention
+    q_cluster_size: 24
+    k_cluster_size: ${.q_cluster_size}
+    n_hashes: 2
+  attn_cfg_1:
+    _target_: src.models.attention.performer_attention.PerformerAttention
+    dim_heads: ${..d_head}
+    nb_features: 24
+t2tattn2_cfg:
+  _target_: ${..t2tattn1_cfg._target_}
+  d_head: ${..t2tattn1_cfg.d_head}
+  n_heads: ${..t2tattn1_cfg.n_heads}
+  gating: ${..t2tattn1_cfg.gating}
+  # seqlen = 784, and we want to use 1/32 of the memory
+  attn_cfg_0:
+    _target_: src.models.attention.smyrf_attention.SmyrfAttention
+    q_cluster_size: 6
+    k_cluster_size: ${.q_cluster_size}
+    n_hashes: 2
+  attn_cfg_1:
+    _target_: src.models.attention.performer_attention.PerformerAttention
+    dim_heads: ${..d_head}
+    nb_features: 6

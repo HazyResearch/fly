@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - /experiment/imagenet/vit/vit-s.yaml
+  - override /model/t2tmodel: vit_b_16
+  - override /model/vitmlp_cfg: fbbfly
+
+model:
+  drop_path_rate: 0.0

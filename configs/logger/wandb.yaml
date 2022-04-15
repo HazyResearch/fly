@@ -5,8 +5,8 @@ wandb:
   project: attention
   name: ${name}
   save_dir: "."
-  offline: False # set True to store all logs only locally
-  id: null # pass correct id to resume experiment!
+  mode: online # set offline to store all logs only locally
+  id: ${oc.select:name} # pass correct id to resume experiment!
   # entity: ""  # set to name of your wandb team or just remove it
   log_model: False
   prefix: ""

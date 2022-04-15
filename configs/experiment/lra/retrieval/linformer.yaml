@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - /experiment/lra/retrieval/transformer
+  - override /model/attn_cfg: linformer
+
+model:
+  attn_cfg:
+    seq_len: ${eval:"${model.pos_encoding_cfg.max_len} + int('${model.pooling_mode}' == 'CLS')"}
+    k: 256
+    attention_dropout: 0.1

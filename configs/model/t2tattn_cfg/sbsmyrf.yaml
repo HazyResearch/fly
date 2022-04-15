@@ -1,0 +1,17 @@
+# @package model
+t2tattn1_cfg:
+  _target_: src.models.attention.sbsmyrf_attention.SBSmyrfAttention
+  # seqlen = 3136, and we want to use 1/32 of the memory
+  q_cluster_size: 24
+  k_cluster_size: ${.q_cluster_size}
+  n_hashes: 2
+  d_head: 64
+  nb_features: 24
+t2tattn2_cfg:
+  _target_: ${..t2tattn1_cfg._target_}
+  # seqlen = 784, and we want to use 1/32 of the memory
+  q_cluster_size: 6
+  k_cluster_size: ${.q_cluster_size}
+  n_hashes: 2
+  d_head: ${..t2tattn1_cfg.d_head}
+  nb_features: 6

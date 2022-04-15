@@ -1,0 +1,75 @@
+# @package _global_
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: null
+  - override /datamodule: imagenet
+  - override /optimizer: adamw
+  - override /scheduler: null
+  - override /callbacks: default
+  - override /metrics: [acc, acctop5]
+  - override /logger: wandb
+
+seed: 1111
+
+model:
+  _target_: timm.models.vit_small_patch16_224
+  drop_path_rate: 0.1
+
+trainer:
+  accelerator: gpu
+  devices: 8
+  num_nodes: 1
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${.devices} * ${datamodule.batch_size} * ${.num_nodes}}}
+  max_epochs: 300
+  precision: 16
+  replace_sampler_ddp: ${eval:"${datamodule.num_aug_repeats} == 0"}
+
+datamodule:
+  batch_size: 128  # Per GPU
+  image_size: 224
+  train_transforms:
+    _target_: timm.data.create_transform
+    input_size: ${datamodule.image_size}
+    is_training: True
+    auto_augment: rand-m9-mstd0.5-inc1  # Use AutoAugment policy
+    interpolation: bicubic
+    re_prob:  0.25  # Random erase prob
+    re_mode: pixel  # Random erase mode
+  val_transforms:
+    _target_: timm.data.create_transform
+    input_size: ${datamodule.image_size}
+    interpolation: bicubic
+    crop_pct: 0.9
+  test_transforms: ${.val_transforms}
+  mixup:
+    _target_: src.datamodules.timm_mixup.TimmMixup
+    mixup_alpha: 0.8
+    cutmix_alpha: 1.0
+    label_smoothing: 0.0  # We're using label smoothing from Pytorch's CrossEntropyLoss
+  # DeiT paper says they use RepeatedAug, but I get 79.7% with RepeatedAug and
+  # 80.1% without.
+  num_aug_repeats: 0
+
+train:
+  global_batch_size: 1024
+  num_steps_per_epoch: ${div_up:${datamodule.__train_len}, ${train.global_batch_size}}
+  optimizer:
+    lr: ${eval:5e-4 * ${train.global_batch_size} / 512}
+    weight_decay: 0.05
+  optimizer_param_grouping:
+    bias_weight_decay: False
+    normalization_weight_decay: False
+  scheduler:
+    _target_: src.optim.timm_lr_scheduler.TimmCosineLRScheduler
+    t_initial: ${eval:${trainer.max_epochs} * ${train.num_steps_per_epoch}}
+    lr_min: 1e-5
+    warmup_lr_init: 1e-6
+    warmup_t: ${eval:5 * ${train.num_steps_per_epoch}}
+    cycle_limit: 1
+    t_in_epochs: False
+  scheduler_interval: step
+  loss_fn:
+    _target_: torch.nn.CrossEntropyLoss
+    label_smoothing: 0.1
+  loss_fn_val:
+    _target_: torch.nn.CrossEntropyLoss

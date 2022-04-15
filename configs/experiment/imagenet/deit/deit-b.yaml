@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - /experiment/imagenet/deit/deit-s.yaml
+
+model:
+  _target_: timm.models.vit_base_patch16_224
+  drop_path_rate: 0.1
+
+datamodule:
+  # RepeatedAug is crucial for ViT-B as it seems to overfit.
+  num_aug-repeats: 3

@@ -1,0 +1,4 @@
+_target_: src.datamodules.glue.GLUEDataModule
+model_name_or_path: bert-base-uncased
+task_name: cola
+__train_len: 8551

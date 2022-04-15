@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - /experiment/lra/retrieval/transformer
+
+model:
+  attn_cfg:
+    attention_dropout: 0.1
+
+datamodule:
+  batch_size: 8

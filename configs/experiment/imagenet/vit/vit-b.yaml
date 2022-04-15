@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - /experiment/imagenet/vit/vit-s.yaml
+  - override /model/t2tmodel: vit_b_16

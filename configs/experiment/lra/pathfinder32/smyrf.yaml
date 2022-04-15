@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - /experiment/lra/pathfinder32/transformer
+  - override /model/attn_cfg: smyrf
+
+model:
+  attn_cfg:
+    attention_dropout: 0.2
+    q_cluster_size: 32
+    k_cluster_size: ${.q_cluster_size}
+    n_hashes: 2

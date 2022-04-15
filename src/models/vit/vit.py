@@ -13,10 +13,13 @@ import torch.nn.functional as F
 
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.helpers import build_model_with_cfg, overlay_external_default_cfg
-from timm.models.layers import PatchEmbed, Mlp, DropPath, trunc_normal_, lecun_normal_
+from timm.models.layers import PatchEmbed, Mlp, trunc_normal_, lecun_normal_
 from timm.models.registry import register_model
 
 from src.models.modules.vision_common import Block
+from src.models.layers.fastlinear import LowRank, SparseLRLinear
+from src.models.layers.blocksparse_linear import BlockSparseLinear
+from src.models.layers.blockdiag_linear import BlockdiagLinear
 
 
 _logger = logging.getLogger(__name__)
@@ -263,7 +266,7 @@ def _init_vit_weights(m, n: str = '', head_bias: float = 0., jax_impl: bool = Fa
       as my original init for compatibility with prev hparam / downstream use cases (ie DeiT).
     * When called w/ valid n (module name) and jax_impl=True, will (hopefully) match JAX impl
     """
-    if isinstance(m, nn.Linear):
+    if isinstance(m, (nn.Linear, BlockSparseLinear, BlockdiagLinear, LowRank, SparseLRLinear)):
         if n.startswith('head'):
             nn.init.zeros_(m.weight)
             nn.init.constant_(m.bias, head_bias)
@@ -279,9 +282,13 @@ def _init_vit_weights(m, n: str = '', head_bias: float = 0., jax_impl: bool = Fa
                     else:
                         nn.init.zeros_(m.bias)
             else:
-                trunc_normal_(m.weight, std=.02)
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
+                dense_init_fn_ = partial(trunc_normal_, std=.02)
+                if isinstance(m, nn.Linear):
+                    dense_init_fn_(m.weight)
+                elif isinstance(m, (BlockSparseLinear, BlockdiagLinear, LowRank)):
+                    m.set_weights_from_dense_init(dense_init_fn_)
     elif jax_impl and isinstance(m, nn.Conv2d):
         # NOTE conv was left to pytorch default in my original init
         lecun_normal_(m.weight)

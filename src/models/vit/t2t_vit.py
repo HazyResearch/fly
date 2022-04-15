@@ -7,6 +7,7 @@
 T2T-ViT
 """
 import math
+from functools import partial
 
 import torch
 import torch.nn as nn
@@ -20,8 +21,9 @@ from timm.models.layers import trunc_normal_
 from src.models.modules.t2t import T2T_module
 from src.models.modules.seq_common import PositionalEncoding
 from src.models.modules.vision_common import Block
-from src.models.modules.layers.fastlinear import LowRank
-from src.models.modules.layers.blocksparse_linear import BlockSparseLinear, BlockSparseLRLinear
+from src.models.layers.fastlinear import LowRank, SparseLRLinear
+from src.models.layers.blocksparse_linear import BlockSparseLinear
+from src.models.layers.blockdiag_linear import BlockdiagLinear
 
 
 def _cfg(url='', **kwargs):
@@ -84,26 +86,14 @@ class T2T_ViT(nn.Module):
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
-        if isinstance(m, (nn.Linear, BlockSparseLinear, LowRank, BlockSparseLRLinear)):
+        if isinstance(m, (nn.Linear, BlockSparseLinear, BlockdiagLinear, LowRank, SparseLRLinear)):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
+            dense_init_fn_ = partial(trunc_normal_, std=.02)
             if isinstance(m, nn.Linear):
-                trunc_normal_(m.weight, std=.02)
-            elif isinstance(m, BlockSparseLinear):
-                scaling = math.sqrt(m.in_features_extended * m.out_features_extended
-                                    / (m.nnz_blocks * m.block_size ** 2))
-                trunc_normal_(m.weight, std=.02 * scaling)
-            elif isinstance(m, LowRank):
-                if m.init == 'svd':
-                    with torch.no_grad():
-                        full_weight = torch.empty(m.out_features, m.in_features,
-                                                  device=m.lr_weight1.device,
-                                                  dtype=m.lr_weight1.dtype)
-                        trunc_normal_(full_weight, std=.02)
-                        U, S, V = torch.svd(full_weight)
-                        S_sqrt = torch.sqrt(S)[:m.rank]
-                        m.lr_weight1.copy_(rearrange(S_sqrt, 'd -> d 1') * V[:, :m.rank].t())
-                        m.lr_weight2.copy_(U[:, :m.rank] * S_sqrt)
+                dense_init_fn_(m.weight)
+            elif isinstance(m, (BlockSparseLinear, BlockdiagLinear, LowRank)):
+                m.set_weights_from_dense_init(dense_init_fn_)
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)

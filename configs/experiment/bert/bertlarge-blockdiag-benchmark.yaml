@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - /experiment/bert/bertlarge.yaml
+  - override /model/bert_mlp_cfg@model.config: blockdiag
+
+model:
+  config:
+    fused_bias_dropout_add: True
+    last_layer_subset: True
+
+datamodule:
+  batch_size: ${eval:"256 if ${train.phase} == 1 else 64"}  # Per GPU

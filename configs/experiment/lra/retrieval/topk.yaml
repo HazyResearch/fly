@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - /experiment/lra/retrieval/transformer
+  - override /model/attn_cfg: topk
+
+model:
+  attn_cfg:
+    attention_dropout: 0.1
+    topk: 256
+
+datamodule:
+  batch_size: 8

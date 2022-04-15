@@ -1,0 +1,4 @@
+# @package eval.metrics
+pearson:
+  _target_: torchmetrics.MatthewsCorrCoef
+  num_classes: 2

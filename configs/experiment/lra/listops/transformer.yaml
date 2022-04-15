@@ -1,0 +1,47 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: transformer-classifier
+  - override /model/attn_cfg: full
+  - override /datamodule: listops
+  - override /scheduler: invsqrt
+  - override /callbacks: default.yaml
+  - override /logger: wandb
+
+# all parameters below will be merged with parameters from default configurations set above
+# this allows you to overwrite only specified parameters
+
+model:
+  d_model: 512
+  n_head: 8
+  n_layer: 4
+  d_inner: 1024
+  dropout: 0.1
+  pos_encoding_cfg:
+    max_len: ${datamodule.max_length}
+  pooling_mode: CLS
+
+seed: 1111
+
+trainer:
+  accelerator: gpu
+  devices: 1
+  max_epochs: 10
+  accumulate_grad_batches: ${div_up:${train.global_batch_size}, ${eval:${trainer.devices} * ${datamodule.batch_size}}}
+
+train:
+  global_batch_size: 32
+  optimizer:
+    lr: 0.05
+    betas: [0.9, 0.98]
+    weight_decay: 0.1
+  scheduler:
+    num_warmup_steps: 1000
+
+datamodule:
+  max_length: 2000
+  batch_size: 32

@@ -7,7 +7,8 @@
 Take the standard Transformer as T2T Transformer
 """
 import torch.nn as nn
-from timm.models.layers import DropPath
+
+from torchvision.ops import StochasticDepth
 
 from einops import rearrange
 
@@ -74,9 +75,9 @@ class Token_transformer(nn.Module):
             attn_drop=attn_drop, proj_drop=drop,
             attn_cfg=attn_cfg,
         )
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = StochasticDepth(drop_path, mode='row')
         self.norm2 = norm_layer(in_dim)
-        self.mlp = Mlp(in_features=in_dim, hidden_features=int(in_dim*mlp_ratio),
+        self.mlp = Mlp(in_features=in_dim, hidden_features=int(in_dim * mlp_ratio),
                        out_features=in_dim, act_layer=act_layer, drop=drop)
 
     def forward(self, x):

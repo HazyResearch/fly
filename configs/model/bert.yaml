@@ -1,0 +1,16 @@
+defaults:
+  - _self_
+  - bertmodel: bertbase
+  - bert_mlp_cfg@config: null
+
+_target_: src.models.bert.BertForPreTraining
+config:
+  _target_: transformers.BertConfig
+  pad_vocab_size_multiple_8: True
+  dense_seq_output: True  # Only compute predictions on the masked tokens
+  unpad_fmha: True
+  softmax_impl: triton  # Compute masked softmax with Triton
+  fused_bias_fc: True
+  fused_bias_mha: True
+  fused_bias_fc_loss_head: True
+  fused_dropout_add: True

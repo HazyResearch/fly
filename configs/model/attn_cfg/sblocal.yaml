@@ -1,3 +1,4 @@
-_target_: src.models.modules.attention.sblocal_attention.SBLocalAttention
+_target_: src.models.attention.sblocal_attention.SBLocalAttention
 local_context: ???
-dim_heads: ${eval:${model.d_model} // ${model.n_head}}
+# Embed dimension is model.mha_cfg.kdim if available, otherwise model.d_model
+dim_heads: ${eval:${oc.select:model.mha_cfg.kdim, ${model.d_model}} // ${model.n_head}}

@@ -1,6 +1,3 @@
-# Adapted from https://github.com/huggingface/transformers/blob/master/src/transformers/models/gpt2/modeling_gpt2.py
-# with minor changes to support custom MLP and Attention layer
-
 # coding=utf-8
 # Copyright 2018 The OpenAI Team Authors and HuggingFace Inc. team.
 # Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
@@ -27,8 +24,11 @@ import torch
 import torch.utils.checkpoint
 from packaging import version
 from torch import nn
-from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss, MSELoss
 
+import hydra
+
+from einops import rearrange
 
 if version.parse(torch.__version__) >= version.parse("1.6"):
     is_amp_available = True
@@ -36,30 +36,39 @@ if version.parse(torch.__version__) >= version.parse("1.6"):
 else:
     is_amp_available = False
 
-from ...activations import ACT2FN
-from ...file_utils import (
+import transformers
+from transformers.activations import ACT2FN
+from transformers.file_utils import (
     ModelOutput,
     add_code_sample_docstrings,
     add_start_docstrings,
     add_start_docstrings_to_model_forward,
     replace_return_docstrings,
 )
-from ...modeling_outputs import (
+from transformers.modeling_outputs import (
     BaseModelOutputWithPastAndCrossAttentions,
     CausalLMOutputWithCrossAttentions,
     SequenceClassifierOutputWithPast,
     TokenClassifierOutput,
 )
-from ...modeling_utils import (
+from transformers.modeling_utils import (
     Conv1D,
     PreTrainedModel,
     SequenceSummary,
     find_pruneable_heads_and_indices,
     prune_conv1d_layer,
 )
-from ...utils import logging
-from ...utils.model_parallel_utils import assert_device_map, get_device_map
-from .configuration_gpt2 import GPT2Config
+from transformers.utils import logging
+from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
+from transformers.models.gpt2.configuration_gpt2 import GPT2Config
+from transformers.models.gpt2.modeling_gpt2 import GPT2_START_DOCSTRING, GPT2_INPUTS_DOCSTRING
+from transformers.models.gpt2.modeling_gpt2 import PARALLELIZE_DOCSTRING, DEPARALLELIZE_DOCSTRING
+from transformers.models.gpt2.modeling_gpt2 import load_tf_weights_in_gpt2
+
+from src.ops.triton.softmax import softmax as softmax_triton
+from src.models.layers.rotary import RotaryEmbedding
+
+USE_TRITON_SOFTMAX = True
 
 
 logger = logging.get_logger(__name__)
@@ -91,13 +100,14 @@ class GPT2Attention(nn.Module):
         )
         self.register_buffer("masked_bias", torch.tensor(-1e4))
 
-        self.embed_dim = config.hidden_size
+        self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
-        self.head_dim = self.embed_dim // self.num_heads
+        self.head_dim = getattr(config, 'head_dim', self.hidden_size // self.num_heads)
+        self.embed_dim = self.head_dim * self.num_heads
         self.split_size = self.embed_dim
-        if self.head_dim * self.num_heads != self.embed_dim:
+        if self.head_dim * self.num_heads != self.split_size:
             raise ValueError(
-                f"`embed_dim` must be divisible by num_heads (got `embed_dim`: {self.embed_dim} and `num_heads`: {self.num_heads})."
+                f"`split_size` must be divisible by num_heads (got `split_size`: {self.split_size} and `num_heads`: {self.num_heads})."
             )
 
         self.scale_attn_weights = config.scale_attn_weights
@@ -107,13 +117,16 @@ class GPT2Attention(nn.Module):
         self.scale_attn_by_inverse_layer_idx = config.scale_attn_by_inverse_layer_idx
         self.layer_idx = layer_idx
         self.reorder_and_upcast_attn = config.reorder_and_upcast_attn
+        self.use_rotary_emb = getattr(config, 'use_rotary_emb', False)
+        if self.use_rotary_emb:
+            self.rotary_emb = RotaryEmbedding(self.head_dim)
 
         if self.is_cross_attention:
-            self.c_attn = Conv1D(2 * self.embed_dim, self.embed_dim)
-            self.q_attn = Conv1D(self.embed_dim, self.embed_dim)
+            self.c_attn = Conv1D(2 * self.embed_dim, self.hidden_size)
+            self.q_attn = Conv1D(self.embed_dim, self.hidden_size)
         else:
-            self.c_attn = Conv1D(3 * self.embed_dim, self.embed_dim)
-        self.c_proj = Conv1D(self.embed_dim, self.embed_dim)
+            self.c_attn = Conv1D(3 * self.embed_dim, self.hidden_size)
+        self.c_proj = Conv1D(self.hidden_size, self.embed_dim)
 
         self.attn_dropout = nn.Dropout(config.attn_pdrop)
         self.resid_dropout = nn.Dropout(config.resid_pdrop)
@@ -136,29 +149,41 @@ class GPT2Attention(nn.Module):
         self.pruned_heads = self.pruned_heads.union(heads)
 
     def _attn(self, query, key, value, attention_mask=None, head_mask=None):
-        attn_weights = torch.matmul(query, key.transpose(-1, -2))
+        # Use `torch.baddbmm` (a bit more efficient w/ alpha param for scaling -- from Megatron-LM)
+        bsz, num_heads, q_seq_len, dk = query.size()
+        _, _, k_seq_len, _ = key.size()
 
+        # Compute Scale Factor
+        scale_factor = 1.0
         if self.scale_attn_weights:
-            attn_weights = attn_weights / (float(value.size(-1)) ** 0.5)
+            scale_factor /= float(value.size(-1)) ** 0.5
 
-        # Layer-wise attention scaling
         if self.scale_attn_by_inverse_layer_idx:
-            attn_weights = attn_weights / float(self.layer_idx + 1)
+            scale_factor /= float(self.layer_idx + 1)
 
-        if not self.is_cross_attention:
-            # if only "normal" attention layer implements causal mask
-            query_length, key_length = query.size(-2), key.size(-2)
-            causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
-            attn_weights = torch.where(causal_mask, attn_weights, self.masked_bias.to(attn_weights.dtype))
+        q = rearrange(query, 'b h t d -> (b h) t d')
+        k = rearrange(key, 'b h s d -> (b h) d s')
+        # Preallocate attn_weights for `baddbmm`
+        attn_weights = torch.empty(bsz * num_heads, q_seq_len, k_seq_len, dtype=query.dtype,
+                                   device=query.device)
 
-        if attention_mask is not None:
-            # Apply the attention mask
-            attn_weights = attn_weights + attention_mask
+        attn_weights = rearrange(torch.baddbmm(attn_weights, q, k, beta=0, alpha=scale_factor),
+                                 '(b h) t s -> b h t s', h=num_heads)
+        if USE_TRITON_SOFTMAX:
+            attn_weights = softmax_triton(attn_weights, mask=attention_mask,
+                                          causal=not self.is_cross_attention)
+        else:
+            if not self.is_cross_attention:
+                # if only "normal" attention layer implements causal mask
+                query_length, key_length = query.size(-2), key.size(-2)
+                causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length].bool()
+                attn_weights.masked_fill_(~causal_mask, self.masked_bias)
+            if attention_mask is not None:
+                # Apply the attention mask
+                attn_weights = attn_weights + attention_mask
+            # Downcast (if necessary) back to V's dtype (if in mixed-precision)
+            attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=value.dtype)
 
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1)
-
-        # Downcast (if necessary) back to V's dtype (if in mixed-precision) -- No-Op otherwise
-        attn_weights = attn_weights.type(value.dtype)
         attn_weights = self.attn_dropout(attn_weights)
 
         # Mask heads if we want to
@@ -276,6 +301,8 @@ class GPT2Attention(nn.Module):
         else:
             present = None
 
+        if self.use_rotary_emb:
+            query, key = self.rotary_emb(query, key)
         if self.reorder_and_upcast_attn:
             attn_output, attn_weights = self._upcast_and_reordered_attn(query, key, value, attention_mask, head_mask)
         else:
@@ -310,7 +337,7 @@ class GPT2MLP(nn.Module):
 
 
 class GPT2Block(nn.Module):
-    def __init__(self, config, layer_idx=None):
+    def __init__(self, config, layer_idx=None, mlp_cfg=None):
         super().__init__()
         hidden_size = config.hidden_size
         inner_dim = config.n_inner if config.n_inner is not None else 4 * hidden_size
@@ -323,7 +350,12 @@ class GPT2Block(nn.Module):
             self.crossattention = GPT2Attention(config, is_cross_attention=True)
             self.ln_cross_attn = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
 
-        self.mlp = GPT2MLP(inner_dim, config)
+        if mlp_cfg is None:
+            self.mlp = GPT2MLP(inner_dim, config)
+        else:
+            self.mlp = hydra.utils.instantiate(mlp_cfg, in_features=config.hidden_size,
+                                               hidden_features=inner_dim, drop=config.resid_pdrop,
+                                               _recursive_=False)
 
     def forward(
         self,
@@ -387,6 +419,53 @@ class GPT2Block(nn.Module):
         return outputs  # hidden_states, present, (attentions, cross_attentions)
 
 
+class GPT2PreTrainedModel(PreTrainedModel):
+    """
+    An abstract class to handle weights initialization and a simple interface for downloading and loading pretrained
+    models.
+    """
+
+    config_class = GPT2Config
+    load_tf_weights = load_tf_weights_in_gpt2
+    base_model_prefix = "transformer"
+    is_parallelizable = True
+    supports_gradient_checkpointing = True
+
+    def __init__(self, *inputs, **kwargs):
+        super().__init__(*inputs, **kwargs)
+
+    def _init_weights(self, module):
+        """Initialize the weights."""
+        if isinstance(module, (nn.Linear, Conv1D)):
+            # Slightly different from the TF version which uses truncated_normal for initialization
+            # cf https://github.com/pytorch/pytorch/pull/5617
+            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+
+        # Reinitialize selected weights subject to the OpenAI GPT-2 Paper Scheme:
+        #   > A modified initialization which accounts for the accumulation on the residual path with model depth. Scale
+        #   > the weights of residual layers at initialization by a factor of 1/√N where N is the # of residual layers.
+        #   >   -- GPT-2 :: https://openai.com/blog/better-language-models/
+        #
+        # Reference (Megatron-LM): https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/model/gpt_model.py
+        for name, p in module.named_parameters():
+            if "c_proj" in name and "weight" in name:
+                # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
+                p.data.normal_(mean=0.0, std=(self.config.initializer_range / math.sqrt(2 * self.config.n_layer)))
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        if isinstance(module, GPT2Model):
+            module.gradient_checkpointing = value
+
+
 @add_start_docstrings(
     "The bare GPT2 Model transformer outputting raw hidden-states without any specific head on top.",
     GPT2_START_DOCSTRING,
@@ -394,16 +473,19 @@ class GPT2Block(nn.Module):
 class GPT2Model(GPT2PreTrainedModel):
     _keys_to_ignore_on_load_missing = ["attn.masked_bias"]
 
-    def __init__(self, config):
+    def __init__(self, config, mlp_cfg=None):
         super().__init__(config)
 
         self.embed_dim = config.hidden_size
 
         self.wte = nn.Embedding(config.vocab_size, self.embed_dim)
-        self.wpe = nn.Embedding(config.max_position_embeddings, self.embed_dim)
+        self.use_rotary_emb = getattr(config, 'use_rotary_emb', False)
+        if not self.use_rotary_emb:
+            self.wpe = nn.Embedding(config.max_position_embeddings, self.embed_dim)
 
         self.drop = nn.Dropout(config.embd_pdrop)
-        self.h = nn.ModuleList([GPT2Block(config, layer_idx=i) for i in range(config.num_hidden_layers)])
+        self.h = nn.ModuleList([GPT2Block(config, layer_idx=i, mlp_cfg=mlp_cfg)
+                                for i in range(config.num_hidden_layers)])
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
 
         # Model parallel
@@ -413,6 +495,19 @@ class GPT2Model(GPT2PreTrainedModel):
 
         # Initialize weights and apply final processing
         self.post_init()
+
+    def tie_weights(self):
+        super().tie_weights()
+        if getattr(self.config, 'tie_weights', False):
+            group_size = getattr(self.config, 'tie_weights_group_size', len(self.h))
+            assert len(self.h) % group_size == 0
+            for block_idx, block in enumerate(self.h):
+                ref_block_idx = (block_idx // group_size) * group_size
+                ref_block = self.h[ref_block_idx]
+                block.attn.c_attn.weight = ref_block.attn.c_attn.weight
+                block.attn.c_proj.weight = ref_block.attn.c_proj.weight
+                block.mlp.fc1.weight = ref_block.mlp.fc1.weight
+                block.mlp.fc2.weight = ref_block.mlp.fc2.weight
 
     @add_start_docstrings(PARALLELIZE_DOCSTRING)
     def parallelize(self, device_map=None):
@@ -557,8 +652,11 @@ class GPT2Model(GPT2PreTrainedModel):
 
         if inputs_embeds is None:
             inputs_embeds = self.wte(input_ids)
-        position_embeds = self.wpe(position_ids)
-        hidden_states = inputs_embeds + position_embeds
+        if not self.use_rotary_emb:
+            position_embeds = self.wpe(position_ids)
+            hidden_states = inputs_embeds + position_embeds
+        else:
+            hidden_states = inputs_embeds
 
         if token_type_ids is not None:
             token_type_embeds = self.wte(token_type_ids)
@@ -672,9 +770,9 @@ class GPT2Model(GPT2PreTrainedModel):
 class GPT2LMHeadModel(GPT2PreTrainedModel):
     _keys_to_ignore_on_load_missing = [r"attn.masked_bias", r"attn.bias", r"lm_head.weight"]
 
-    def __init__(self, config):
+    def __init__(self, config, mlp_cfg=None):
         super().__init__(config)
-        self.transformer = GPT2Model(config)
+        self.transformer = GPT2Model(config, mlp_cfg=mlp_cfg)
         self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         # Model parallel
@@ -826,450 +924,4 @@ class GPT2LMHeadModel(GPT2PreTrainedModel):
         return tuple(
             tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past)
             for layer_past in past
-        )
-
-
-@add_start_docstrings(
-    """
-The GPT2 Model transformer with a language modeling and a multiple-choice classification head on top e.g. for
-RocStories/SWAG tasks. The two heads are two linear layers. The language modeling head has its weights tied to the
-input embeddings, the classification head takes as input the input of a specified classification token index in the
-input sequence).
-""",
-    GPT2_START_DOCSTRING,
-)
-class GPT2DoubleHeadsModel(GPT2PreTrainedModel):
-    _keys_to_ignore_on_load_missing = [r"attn.masked_bias", r"attn.bias", r"lm_head.weight"]
-
-    def __init__(self, config):
-        super().__init__(config)
-        config.num_labels = 1
-        self.transformer = GPT2Model(config)
-        self.lm_head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.multiple_choice_head = SequenceSummary(config)
-
-        # Model parallel
-        self.model_parallel = False
-        self.device_map = None
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    @add_start_docstrings(PARALLELIZE_DOCSTRING)
-    def parallelize(self, device_map=None):
-        self.device_map = (
-            get_device_map(len(self.transformer.h), range(torch.cuda.device_count()))
-            if device_map is None
-            else device_map
-        )
-        assert_device_map(self.device_map, len(self.transformer.h))
-        self.transformer.parallelize(self.device_map)
-        self.lm_head = self.lm_head.to(self.transformer.first_device)
-        self.multiple_choice_head = self.multiple_choice_head.to(self.transformer.first_device)
-        self.model_parallel = True
-
-    @add_start_docstrings(DEPARALLELIZE_DOCSTRING)
-    def deparallelize(self):
-        self.transformer.deparallelize()
-        self.transformer = self.transformer.to("cpu")
-        self.lm_head = self.lm_head.to("cpu")
-        self.multiple_choice_head = self.multiple_choice_head.to("cpu")
-        self.model_parallel = False
-        torch.cuda.empty_cache()
-
-    def get_output_embeddings(self):
-        return self.lm_head
-
-    def set_output_embeddings(self, new_embeddings):
-        self.lm_head = new_embeddings
-
-    def prepare_inputs_for_generation(self, input_ids, past=None, **kwargs):
-        token_type_ids = kwargs.get("token_type_ids", None)
-        # only last token for inputs_ids if past is defined in kwargs
-        if past:
-            input_ids = input_ids[:, -1].unsqueeze(-1)
-            if token_type_ids is not None:
-                token_type_ids = token_type_ids[:, -1].unsqueeze(-1)
-
-        attention_mask = kwargs.get("attention_mask", None)
-        position_ids = kwargs.get("position_ids", None)
-
-        if attention_mask is not None and position_ids is None:
-            # create position_ids on the fly for batch generation
-            position_ids = attention_mask.long().cumsum(-1) - 1
-            position_ids.masked_fill_(attention_mask == 0, 1)
-            if past:
-                position_ids = position_ids[:, -1].unsqueeze(-1)
-        else:
-            position_ids = None
-
-        return {
-            "input_ids": input_ids,
-            "past_key_values": past,
-            "use_cache": kwargs.get("use_cache"),
-            "position_ids": position_ids,
-            "attention_mask": attention_mask,
-            "token_type_ids": token_type_ids,
-        }
-
-    @add_start_docstrings_to_model_forward(GPT2_INPUTS_DOCSTRING)
-    @replace_return_docstrings(output_type=GPT2DoubleHeadsModelOutput, config_class=_CONFIG_FOR_DOC)
-    def forward(
-        self,
-        input_ids=None,
-        past_key_values=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        mc_token_ids=None,
-        labels=None,
-        mc_labels=None,
-        use_cache=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
-        **kwargs,
-    ):
-        r"""
-        mc_token_ids (:obj:`torch.LongTensor` of shape :obj:`(batch_size, num_choices)`, `optional`, default to index of the last token of the input):
-            Index of the classification token in each input sequence. Selected in the range ``[0, input_ids.size(-1) -
-            1[``.
-        labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size, sequence_length)`, `optional`):
-            Labels for language modeling. Note that the labels **are shifted** inside the model, i.e. you can set
-            ``labels = input_ids`` Indices are selected in ``[-100, 0, ..., config.vocab_size - 1]`` All labels set to
-            ``-100`` are ignored (masked), the loss is only computed for labels in ``[0, ..., config.vocab_size - 1]``
-        mc_labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size)`, `optional`):
-            Labels for computing the multiple choice classification loss. Indices should be in ``[0, ...,
-            num_choices]`` where `num_choices` is the size of the second dimension of the input tensors. (see
-            `input_ids` above)
-
-        Return:
-
-        Example::
-
-            >>> import torch
-            >>> from transformers import GPT2Tokenizer, GPT2DoubleHeadsModel
-
-            >>> tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-            >>> model = GPT2DoubleHeadsModel.from_pretrained('gpt2')
-
-            >>> # Add a [CLS] to the vocabulary (we should train it also!)
-            >>> num_added_tokens = tokenizer.add_special_tokens({'cls_token': '[CLS]'})
-
-            >>> embedding_layer = model.resize_token_embeddings(len(tokenizer))  # Update the model embeddings with the new vocabulary size
-
-            >>> choices = ["Hello, my dog is cute [CLS]", "Hello, my cat is cute [CLS]"]
-            >>> encoded_choices = [tokenizer.encode(s) for s in choices]
-            >>> cls_token_location = [tokens.index(tokenizer.cls_token_id) for tokens in encoded_choices]
-
-            >>> input_ids = torch.tensor(encoded_choices).unsqueeze(0)  # Batch size: 1, number of choices: 2
-            >>> mc_token_ids = torch.tensor([cls_token_location])  # Batch size: 1
-
-            >>> outputs = model(input_ids, mc_token_ids=mc_token_ids)
-            >>> lm_logits = outputs.logits
-            >>> mc_logits = outputs.mc_logits
-
-        """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        transformer_outputs = self.transformer(
-            input_ids,
-            past_key_values=past_key_values,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        hidden_states = transformer_outputs[0]
-
-        # Set device for model parallelism
-        if self.model_parallel:
-            torch.cuda.set_device(self.transformer.first_device)
-            hidden_states = hidden_states.to(self.lm_head.weight.device)
-
-        lm_logits = self.lm_head(hidden_states)
-        mc_logits = self.multiple_choice_head(hidden_states, mc_token_ids).squeeze(-1)
-
-        mc_loss = None
-        if mc_labels is not None:
-            loss_fct = CrossEntropyLoss()
-            mc_loss = loss_fct(mc_logits.view(-1, mc_logits.size(-1)), mc_labels.view(-1))
-        lm_loss = None
-        if labels is not None:
-            shift_logits = lm_logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            loss_fct = CrossEntropyLoss()
-            lm_loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-
-        if not return_dict:
-            output = (lm_logits, mc_logits) + transformer_outputs[1:]
-            if mc_loss is not None:
-                output = (mc_loss,) + output
-            return ((lm_loss,) + output) if lm_loss is not None else output
-
-        return GPT2DoubleHeadsModelOutput(
-            loss=lm_loss,
-            mc_loss=mc_loss,
-            logits=lm_logits,
-            mc_logits=mc_logits,
-            past_key_values=transformer_outputs.past_key_values,
-            hidden_states=transformer_outputs.hidden_states,
-            attentions=transformer_outputs.attentions,
-        )
-
-    @staticmethod
-    def _reorder_cache(past: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor) -> Tuple[Tuple[torch.Tensor]]:
-        """
-        This function is used to re-order the :obj:`past_key_values` cache if
-        :meth:`~transformers.PreTrainedModel.beam_search` or :meth:`~transformers.PreTrainedModel.beam_sample` is
-        called. This is required to match :obj:`past_key_values` with the correct beam_idx at every generation step.
-        """
-        return tuple(
-            tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past)
-            for layer_past in past
-        )
-
-
-@add_start_docstrings(
-    """
-    The GPT2 Model transformer with a sequence classification head on top (linear layer).
-
-    :class:`~transformers.GPT2ForSequenceClassification` uses the last token in order to do the classification, as
-    other causal models (e.g. GPT-1) do.
-
-    Since it does classification on the last token, it requires to know the position of the last token. If a
-    :obj:`pad_token_id` is defined in the configuration, it finds the last token that is not a padding token in each
-    row. If no :obj:`pad_token_id` is defined, it simply takes the last value in each row of the batch. Since it cannot
-    guess the padding tokens when :obj:`inputs_embeds` are passed instead of :obj:`input_ids`, it does the same (take
-    the last value in each row of the batch).
-    """,
-    GPT2_START_DOCSTRING,
-)
-class GPT2ForSequenceClassification(GPT2PreTrainedModel):
-    _keys_to_ignore_on_load_missing = [r"h\.\d+\.attn\.masked_bias", r"lm_head\.weight"]
-
-    def __init__(self, config):
-        super().__init__(config)
-        self.num_labels = config.num_labels
-        self.transformer = GPT2Model(config)
-        self.score = nn.Linear(config.n_embd, self.num_labels, bias=False)
-
-        # Model parallel
-        self.model_parallel = False
-        self.device_map = None
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    @add_start_docstrings_to_model_forward(GPT2_INPUTS_DOCSTRING)
-    @add_code_sample_docstrings(
-        processor_class=_TOKENIZER_FOR_DOC,
-        checkpoint="microsoft/DialogRPT-updown",
-        output_type=SequenceClassifierOutputWithPast,
-        config_class=_CONFIG_FOR_DOC,
-    )
-    def forward(
-        self,
-        input_ids=None,
-        past_key_values=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        labels=None,
-        use_cache=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
-    ):
-        r"""
-        labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
-            Labels for computing the sequence classification/regression loss. Indices should be in :obj:`[0, ...,
-            config.num_labels - 1]`. If :obj:`config.num_labels == 1` a regression loss is computed (Mean-Square loss),
-            If :obj:`config.num_labels > 1` a classification loss is computed (Cross-Entropy).
-        """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        transformer_outputs = self.transformer(
-            input_ids,
-            past_key_values=past_key_values,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-        hidden_states = transformer_outputs[0]
-        logits = self.score(hidden_states)
-
-        if input_ids is not None:
-            batch_size, sequence_length = input_ids.shape[:2]
-        else:
-            batch_size, sequence_length = inputs_embeds.shape[:2]
-
-        assert (
-            self.config.pad_token_id is not None or batch_size == 1
-        ), "Cannot handle batch sizes > 1 if no padding token is defined."
-        if self.config.pad_token_id is None:
-            sequence_lengths = -1
-        else:
-            if input_ids is not None:
-                sequence_lengths = torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1
-            else:
-                sequence_lengths = -1
-                logger.warning(
-                    f"{self.__class__.__name__} will not detect padding tokens in `inputs_embeds`. Results may be "
-                    f"unexpected if using padding tokens in conjunction with `inputs_embeds.`"
-                )
-
-        pooled_logits = logits[range(batch_size), sequence_lengths]
-
-        loss = None
-        if labels is not None:
-            if self.config.problem_type is None:
-                if self.num_labels == 1:
-                    self.config.problem_type = "regression"
-                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
-                    self.config.problem_type = "single_label_classification"
-                else:
-                    self.config.problem_type = "multi_label_classification"
-
-            if self.config.problem_type == "regression":
-                loss_fct = MSELoss()
-                if self.num_labels == 1:
-                    loss = loss_fct(pooled_logits.squeeze(), labels.squeeze())
-                else:
-                    loss = loss_fct(pooled_logits, labels)
-            elif self.config.problem_type == "single_label_classification":
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
-            elif self.config.problem_type == "multi_label_classification":
-                loss_fct = BCEWithLogitsLoss()
-                loss = loss_fct(pooled_logits, labels)
-        if not return_dict:
-            output = (pooled_logits,) + transformer_outputs[1:]
-            return ((loss,) + output) if loss is not None else output
-
-        return SequenceClassifierOutputWithPast(
-            loss=loss,
-            logits=pooled_logits,
-            past_key_values=transformer_outputs.past_key_values,
-            hidden_states=transformer_outputs.hidden_states,
-            attentions=transformer_outputs.attentions,
-        )
-
-
-@add_start_docstrings(
-    """
-    GPT2 Model with a token classification head on top (a linear layer on top of the hidden-states output) e.g. for
-    Named-Entity-Recognition (NER) tasks.
-    """,
-    GPT2_START_DOCSTRING,
-)
-class GPT2ForTokenClassification(GPT2PreTrainedModel):
-    def __init__(self, config):
-        super().__init__(config)
-        self.num_labels = config.num_labels
-
-        self.transformer = GPT2Model(config)
-        if hasattr(config, "classifier_dropout") and config.classifier_dropout is not None:
-            classifier_dropout = config.classifier_dropout
-        elif hasattr(config, "hidden_dropout") and config.hidden_dropout is not None:
-            classifier_dropout = config.hidden_dropout
-        else:
-            classifier_dropout = 0.1
-        self.dropout = nn.Dropout(classifier_dropout)
-        self.classifier = nn.Linear(config.hidden_size, config.num_labels)
-
-        # Model parallel
-        self.model_parallel = False
-        self.device_map = None
-
-        # Initialize weights and apply final processing
-        self.post_init()
-
-    @add_start_docstrings_to_model_forward(GPT2_INPUTS_DOCSTRING)
-    @add_code_sample_docstrings(
-        processor_class=_TOKENIZER_FOR_DOC,
-        checkpoint="microsoft/DialogRPT-updown",
-        output_type=TokenClassifierOutput,
-        config_class=_CONFIG_FOR_DOC,
-    )
-    def forward(
-        self,
-        input_ids=None,
-        past_key_values=None,
-        attention_mask=None,
-        token_type_ids=None,
-        position_ids=None,
-        head_mask=None,
-        inputs_embeds=None,
-        labels=None,
-        use_cache=None,
-        output_attentions=None,
-        output_hidden_states=None,
-        return_dict=None,
-    ):
-        r"""
-        labels (:obj:`torch.LongTensor` of shape :obj:`(batch_size,)`, `optional`):
-            Labels for computing the sequence classification/regression loss. Indices should be in :obj:`[0, ...,
-            config.num_labels - 1]`. If :obj:`config.num_labels == 1` a regression loss is computed (Mean-Square loss),
-            If :obj:`config.num_labels > 1` a classification loss is computed (Cross-Entropy).
-        """
-        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-
-        transformer_outputs = self.transformer(
-            input_ids,
-            past_key_values=past_key_values,
-            attention_mask=attention_mask,
-            token_type_ids=token_type_ids,
-            position_ids=position_ids,
-            head_mask=head_mask,
-            inputs_embeds=inputs_embeds,
-            use_cache=use_cache,
-            output_attentions=output_attentions,
-            output_hidden_states=output_hidden_states,
-            return_dict=return_dict,
-        )
-
-        hidden_states = transformer_outputs[0]
-        hidden_states = self.dropout(hidden_states)
-        logits = self.classifier(hidden_states)
-
-        loss = None
-        if labels is not None:
-            loss_fct = CrossEntropyLoss()
-            # Only keep active parts of the loss
-            if attention_mask is not None:
-                active_loss = attention_mask.view(-1) == 1
-                active_logits = logits.view(-1, self.num_labels)
-                active_labels = torch.where(
-                    active_loss, labels.view(-1), torch.tensor(loss_fct.ignore_index).type_as(labels)
-                )
-                loss = loss_fct(active_logits, active_labels)
-            else:
-                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-
-        if not return_dict:
-            output = (logits,) + transformer_outputs[2:]
-            return ((loss,) + output) if loss is not None else output
-
-        return TokenClassifierOutput(
-            loss=loss,
-            logits=logits,
-            hidden_states=transformer_outputs.hidden_states,
-            attentions=transformer_outputs.attentions,
         )

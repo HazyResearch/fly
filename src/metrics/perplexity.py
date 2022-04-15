@@ -39,7 +39,7 @@ class Perplexity(Metric):
         )
 
         # Total sum of exponentiated average negative log likelihoods
-        self.add_state('nll_sum', default=torch.tensor(0.0, dtype=torch.float64), dist_reduce_fx='sum')
+        self.add_state('nll_mean', default=torch.tensor(0.0, dtype=torch.float64), dist_reduce_fx='mean')
         # Total number of sequences in all batches
         self.add_state('numel', default=torch.tensor(0, dtype=torch.int64), dist_reduce_fx='sum')
 
@@ -54,8 +54,10 @@ class Perplexity(Metric):
         # self.numel += mask.sum().long()
         # self.nll_sum += nll
         # TODO: ignoring mask rn
+        current_sum = self.nll_mean.double() * self.numel
         self.numel += labels.numel()
-        self.nll_sum += F.cross_entropy(logits, labels, reduction='sum')
+        loss = F.cross_entropy(logits, labels)
+        self.nll_mean = (current_sum + loss.double() * labels.numel()) / self.numel
 
     def compute(self):
         """
@@ -63,4 +65,5 @@ class Perplexity(Metric):
         """
         if self.numel.eq(0):
             return None
-        return (self.nll_sum / self.numel).exp()
+        # return (self.nll_sum / self.numel).exp()
+        return self.nll_mean.exp()

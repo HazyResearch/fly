@@ -13,7 +13,7 @@ from einops import rearrange
 
 from src.models.modules.masking import FullMask, LengthMask
 
-from src.models.modules.attention.mask_utils import pad_mask
+from src.models.attention.mask_utils import pad_mask
 
 
 # Adapted from https://pytorch.org/docs/stable/_modules/torch/nn/modules/activation.html#MultiheadAttention

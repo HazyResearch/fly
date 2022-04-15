@@ -1,0 +1,10 @@
+_target_: src.models.s4_seq.S4Classifier
+d_model: ???
+activation: gelu
+norm_first: True
+batch_first: True
+pooling_mode: MEAN
+embedding_cfg:
+  _target_: torch.nn.Embedding
+  # num_embeddings will be read programmatically from datamodule after it is setup
+  # embedding_dim: ${..d_model}

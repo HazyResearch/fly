@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - /experiment/lra/retrieval/transformer
+  - override /model/attn_cfg: reformer
+
+model:
+  mha_cfg:
+    shared_qk: True
+  attn_cfg:
+    attention_dropout: 0.1
+    bucket_size: 128
+    n_hashes: 2

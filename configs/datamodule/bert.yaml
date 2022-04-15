@@ -1,0 +1,18 @@
+_target_: src.datamodules.masked_language_modeling.MLMDataModule
+dataset_name:
+  - ${oc.env:DATA_DIR,${data_dir}}/bert/wikicorpus_text  # We pass the path instead
+  - ${oc.env:DATA_DIR,${data_dir}}/bert/bookcorpus  # We pass the path instead
+tokenizer_name: bert-base-uncased
+cache_dir:
+  - ${oc.env:DATA_DIR,${data_dir}}/bert/wikicorpus/cache
+  - ${oc.env:DATA_DIR,${data_dir}}/bert/bookcorpus/cache
+max_length: 128
+dupe_factor: 5
+val_ratio: 0.0005
+val_split_seed: 2357
+batch_size: 8  # per GPU
+batch_size_eval: ${eval:${.batch_size} * 2}
+num_workers: 8  # per GPU
+num_workers_preprocess: 64
+shuffle: True
+pin_memory: True

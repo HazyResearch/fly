@@ -46,12 +46,18 @@ from functools import partial
 import torch
 import torch.nn as nn
 
+from torchvision.ops import StochasticDepth
+
 from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.models.helpers import build_model_with_cfg, named_apply
-from timm.models.layers import PatchEmbed, Mlp, GluMlp, GatedMlp, DropPath, lecun_normal_, to_2tuple
+from timm.models.layers import PatchEmbed, Mlp, GluMlp, GatedMlp, lecun_normal_, to_2tuple
 from timm.models.registry import register_model
 
 import hydra
+
+from src.models.layers.fastlinear import LowRank, SparseLRLinear
+from src.models.layers.blocksparse_linear import BlockSparseLinear
+from src.models.layers.blockdiag_linear import BlockdiagLinear
 
 
 def _cfg(url='', **kwargs):
@@ -157,7 +163,7 @@ class MixerBlock(nn.Module):
                                                       hidden_features=tokens_dim,
                                                       act_layer=act_layer, drop=drop,
                                                       _recursive_=False)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = StochasticDepth(drop_path, mode='row')
         self.norm2 = norm_layer(dim)
         if channel_mlp_cfg is None:
             self.mlp_channels = mlp_layer(dim, channels_dim, act_layer=act_layer, drop=drop)
@@ -195,7 +201,7 @@ class ResBlock(nn.Module):
         channel_dim = int(dim * mlp_ratio)
         self.norm1 = norm_layer(dim)
         self.linear_tokens = nn.Linear(seq_len, seq_len)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = StochasticDepth(drop_path, mode='row')
         self.norm2 = norm_layer(dim)
         self.mlp_channels = mlp_layer(dim, channel_dim, act_layer=act_layer, drop=drop)
         self.ls1 = nn.Parameter(init_values * torch.ones(dim))
@@ -243,7 +249,7 @@ class SpatialGatingBlock(nn.Module):
         self.norm = norm_layer(dim)
         sgu = partial(SpatialGatingUnit, seq_len=seq_len)
         self.mlp_channels = mlp_layer(dim, channel_dim, act_layer=act_layer, gate_layer=sgu, drop=drop)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = StochasticDepth(drop_path, mode='row')
 
     def forward(self, x):
         x = x + self.drop_path(self.mlp_channels(self.norm(x)))
@@ -319,8 +325,8 @@ class MlpMixer(nn.Module):
 def _init_weights(module: nn.Module, name: str, head_bias: float = 0., flax=False):
     """ Mixer weight initialization (trying to match Flax defaults)
     """
-    if isinstance(module, nn.Linear):
-        if name.startswith('head'):
+    if isinstance(module, (nn.Linear, BlockSparseLinear, BlockdiagLinear, LowRank, SparseLRLinear)):
+        if name.startswith('head') and isinstance(module, nn.Linear):
             nn.init.zeros_(module.weight)
             nn.init.constant_(module.bias, head_bias)
         else:
@@ -331,12 +337,16 @@ def _init_weights(module: nn.Module, name: str, head_bias: float = 0., flax=Fals
                     nn.init.zeros_(module.bias)
             else:
                 # like MLP init in vit (my original init)
-                nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     if 'mlp' in name:
                         nn.init.normal_(module.bias, std=1e-6)
                     else:
                         nn.init.zeros_(module.bias)
+                dense_init_fn_ = nn.init.xavier_uniform_
+                if isinstance(module, nn.Linear):
+                    dense_init_fn_(module.weight)
+                elif isinstance(module, (BlockSparseLinear, BlockdiagLinear, LowRank)):
+                    module.set_weights_from_dense_init(dense_init_fn_)
     elif isinstance(module, nn.Conv2d):
         lecun_normal_(module.weight)
         if module.bias is not None:

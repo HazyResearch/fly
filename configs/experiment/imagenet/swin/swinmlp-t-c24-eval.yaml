@@ -1,0 +1,16 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/imagenet/swin/swin-t-eval.yaml
+  - override /model: swinmlp
+  - override /model/swinmlpmodel: swinmlp-t-c24
+
+datamodule:
+  image_size: 256
+
+eval:
+  checkpoint_type: pytorch
+  ckpt: ${oc.env:CHECKPOINT_DIR}/swin/swin_mlp_tiny_c24_patch4_window8_256.pth

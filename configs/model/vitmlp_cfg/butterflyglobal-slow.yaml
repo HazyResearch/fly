@@ -1,6 +1,6 @@
 # @package model
 mlp_cfg:
-  _target_: src.models.modules.layers.mlp.ButterflyGlobalMlp
+  _target_: src.models.layers.mlp.ButterflyGlobalMlp
   window_size: 16
   stripes_1: 1
   stripes_2: 1

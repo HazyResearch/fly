@@ -17,3 +17,17 @@ def bitreversal_permutation(n, device=None, dtype=None):
         perm = torch.vstack(perm.chunk(2, dim=-1))
     perm = perm.squeeze(-1)
     return perm
+
+
+def invert_permutation(perm: torch.Tensor) -> torch.Tensor:
+    """
+    Params:
+        perm: (..., n)
+    Return:
+        inverse_perm: (..., n)
+    """
+    # This is simpler but has complexity O(n log n)
+    # return torch.argsort(perm, dim=-1)
+    # This is more complicated but has complexity O(n)
+    arange = torch.arange(perm.shape[-1], device=perm.device).expand_as(perm)
+    return torch.empty_like(perm).scatter_(-1, perm, arange)

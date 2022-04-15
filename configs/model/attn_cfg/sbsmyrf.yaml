@@ -1,0 +1,6 @@
+_target_: src.models.attention.sbsmyrf_attention.SBSmyrfAttention
+q_cluster_size: ???
+k_cluster_size: ???
+n_hashes: ???
+# Embed dimension is model.mha_cfg.kdim if available, otherwise model.d_model
+d_head: ${eval:${oc.select:model.mha_cfg.kdim, ${model.d_model}} // ${model.n_head}}

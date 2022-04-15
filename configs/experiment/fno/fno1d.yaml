@@ -1,0 +1,41 @@
+# @package _global_
+defaults:
+  - override /trainer: default # choose trainer from 'configs/trainer/'
+  - override /model: fno1d
+  - override /datamodule: burgers
+  - override /optimizer: adamw
+  - override /scheduler: step
+  - override /callbacks: default
+  - override /metrics: [mse]
+  - override /logger: wandb
+
+seed: 1111
+
+model:
+  modes: 16
+  width: 64
+
+trainer:
+  accelerator: gpu
+  devices: 1
+  num_nodes: 1
+  max_epochs: 500
+
+datamodule:
+  batch_size: 20
+  subsampling_rate: 8
+
+train:
+  optimizer:
+    lr:  1e-3
+    weight_decay: 1e-3
+  scheduler:
+    step_size: 50
+    gamma: 0.5
+  scheduler_interval: epoch
+  loss_fn:
+    _target_: src.losses.relative_l2.RelativeL2
+
+callbacks:
+  model_checkpoint: null
+  early_stopping: null

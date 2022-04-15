@@ -1,6 +1,6 @@
 # @package model
 t2tattn1_cfg:
-  _target_: src.models.modules.attention.performer_attention.PerformerAttention
+  _target_: src.models.attention.performer_attention.PerformerAttention
   dim_heads: 64
   nb_features: 49  # seqlen = 3136, and we want to use 1/32 of the memory
   # Very important that we set eps to very small since we care about approximation quality

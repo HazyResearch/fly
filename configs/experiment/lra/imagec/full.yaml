@@ -1,0 +1,14 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/lra/imagec/transformer
+
+model:
+  attn_cfg:
+    attention_dropout: 0.2
+
+datamodule:
+  batch_size: 64

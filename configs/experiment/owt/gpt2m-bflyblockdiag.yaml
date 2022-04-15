@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - /experiment/owt/gpt2m.yaml
+  - override /model/gpt2_mlp_cfg@model.mlp_cfg: bflyblockdiag

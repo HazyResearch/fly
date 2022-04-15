@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - /experiment/lra/listops/transformer
+  - override /model/attn_cfg: sbsmyrf
+
+model:
+  attn_cfg:
+    attention_dropout: 0.1
+    q_cluster_size: 32
+    k_cluster_size: ${.q_cluster_size}
+    n_hashes: 2
+    nb_features: 32
+    softmax_eps: 1e-4

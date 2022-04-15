@@ -37,3 +37,6 @@ params_log:
   total_params_log: True
   trainable_params_log: True
   non_trainable_params_log: True
+
+gpu_affinity:
+  _target_: src.callbacks.gpu_affinity.GpuAffinity

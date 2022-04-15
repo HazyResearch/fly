@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - /experiment/bert/bertbase.yaml
+  - override /model/bert_mlp_cfg@model.config: blockdiag
+
+model:
+  config:
+    fused_bias_dropout_add: True

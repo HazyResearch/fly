@@ -1,0 +1,13 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/imagenet/t2tvit/t2tvit7.yaml
+  - override /model/t2tmodel: t2t_vit_14
+
+train:
+  optimizer:
+    lr: 5e-4
+    weight_decay: 0.05

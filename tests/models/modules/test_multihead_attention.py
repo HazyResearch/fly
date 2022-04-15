@@ -8,7 +8,7 @@ from einops import rearrange, reduce
 from fast_transformers.masking import FullMask, LengthMask
 
 from src.models.modules.multihead_attention import MultiheadAttention
-from src.models.modules.attention.full_attention import FullAttention
+from src.models.attention.full_attention import FullAttention
 
 
 def seed_cpu_cuda(seed):

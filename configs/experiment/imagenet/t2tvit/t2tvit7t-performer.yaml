@@ -1,0 +1,12 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/imagenet/t2tvit/t2tvit7t.yaml
+  - override /model/t2tattn_cfg: performer
+
+model:
+  t2tattn1_cfg:
+    softmax_eps: 1e-4

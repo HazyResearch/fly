@@ -1,0 +1,17 @@
+# @package _global_
+
+# to execute this experiment run:
+# python run.py experiment=example_simple.yaml
+
+defaults:
+  - /experiment/lra/pathfinder32/transformer
+  - override /model/attn_cfg: local
+
+model:
+  attn_cfg:
+    attention_dropout: 0.2
+    local_context: 64
+  # It's important to use mean pooling and not CLS token, as the CLS token won't
+  # be connected to tokens beyond the local context. We don't want to classify
+  # based on just the first 32 characters.
+  pooling_mode: MEAN

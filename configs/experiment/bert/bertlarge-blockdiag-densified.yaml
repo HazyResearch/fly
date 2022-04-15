@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - /experiment/bert/bertlarge.yaml
+
+train:
+  phase: 2
+  warmstart:
+    path: ${work_dir}/checkpoints/bertlarge-blockdiag/last.ckpt
+    strict: True
+    post_process:
+      _target_: src.utils.checkpoint.blockdiag_to_dense_mlp_bert

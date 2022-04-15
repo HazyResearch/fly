@@ -1,6 +1,6 @@
 # @package model
 t2tattn1_cfg:
-  _target_: src.models.modules.attention.sbblocksparse_attention.SBBlockSparseAttention
+  _target_: src.models.attention.sbblocksparse_attention.SBBlockSparseAttention
   # seqlen = 3136, and we want to use 1/32 of the memory
   sparsity_config:
     _target_: deepspeed.ops.sparse_attention.BSLongformerSparsityConfig
