@@ -30,4 +30,5 @@ class ParamsLog(Callback):
         if self._log_stats.non_trainable_params_log:
             logs["model/params_not_trainable"] = sum(p.numel() for p in pl_module.parameters()
                                                      if not p.requires_grad)
-        trainer.logger.log_hyperparams(logs)
+        if trainer.logger is not None:
+            trainer.logger.log_hyperparams(logs)
