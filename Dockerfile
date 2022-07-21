@@ -2,7 +2,7 @@
 # ARG COMPAT=0
 ARG PERSONAL=0
 # FROM nvidia/cuda:11.3.1-devel-ubuntu20.04 as base-0
-FROM nvcr.io/nvidia/pytorch:22.03-py3 as base
+FROM nvcr.io/nvidia/pytorch:22.06-py3 as base
 
 ENV HOST docker
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
@@ -99,8 +99,8 @@ ARG PYTHON_VERSION=3.8
 ENV PIP_NO_CACHE_DIR=1
 
 # # apex and pytorch-fast-transformers take a while to compile so we install them first
-# TD [2022-03-12] apex is already installed, but we need the latest version with commit https://github.com/NVIDIA/apex/commit/7e1c22d094e087a27e91b4d8129c8244a19c9c92
-RUN pip install --upgrade --force-reinstall --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--fast_multihead_attn" --global-option="--fmha" --global-option="--fast_layer_norm" git+https://github.com/NVIDIA/apex.git#egg=apex
+# TD [2022-04-28] apex is already installed. In case we need a newer commit:
+# RUN pip install --upgrade --force-reinstall --global-option="--cpp_ext" --global-option="--cuda_ext" --global-option="--fast_multihead_attn" --global-option="--fmha" --global-option="--fast_layer_norm" --global-option="--xentropy" git+https://github.com/NVIDIA/apex.git#egg=apex
 # TD [2021-10-28] pytorch-fast-transformers doesn't have a wheel compatible with CUDA 11.3 and Pytorch 1.10
 # So we install from source, and change compiler flag -arch=compute_60 -> -arch=compute_70 for V100
 # RUN pip install pytorch-fast-transformers==0.4.0
@@ -111,16 +111,19 @@ RUN git clone https://github.com/idiap/fast-transformers \
     && rm -rf fast-transformers
 
 # xgboost conflicts with deepspeed
-RUN pip uninstall -y xgboost && DS_BUILD_UTILS=1 DS_BUILD_FUSED_LAMB=1 pip install deepspeed==0.6.1
+RUN pip uninstall -y xgboost && DS_BUILD_UTILS=1 DS_BUILD_FUSED_LAMB=1 pip install deepspeed==0.6.5
 
 # General packages that we don't care about the version
 # fs for reading tar files
-RUN pip install pytest matplotlib jupyter ipython ipdb scikit-learn spacy munch einops fs fvcore gsutil \
+RUN pip install pytest matplotlib jupyter ipython ipdb gpustat scikit-learn spacy munch einops fs fvcore gsutil cmake pykeops \
     && python -m spacy download en_core_web_sm
 # hydra
-RUN pip install hydra-core==1.1.1 hydra-colorlog==1.1.0 hydra-optuna-sweeper==1.1.1 python-dotenv rich
+RUN pip install hydra-core==1.2.0 hydra-colorlog==1.2.0 hydra-optuna-sweeper==1.2.0 python-dotenv rich
 # Core packages
-RUN pip install transformers==4.18.0 datasets==2.0.0 pytorch-lightning==1.6.1 triton==2.0.0.dev20220412 wandb==0.12.14 timm==0.5.4 torchmetrics==0.8.0
+RUN pip install transformers==4.20.1 datasets==2.3.2 pytorch-lightning==1.6.5 triton==2.0.0.dev20220711 wandb==0.12.21 timm==0.6.5 torchmetrics==0.9.2
+
+# For MLPerf
+RUN pip install git+https://github.com/mlcommons/logging.git@2.0.0-rc4
 
 # This is for huggingface/examples and smyrf
 RUN pip install tensorboard seqeval psutil sacrebleu rouge-score tensorflow_datasets h5py
