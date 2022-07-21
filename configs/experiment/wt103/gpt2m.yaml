@@ -1,7 +1,12 @@
 # @package _global_
 defaults:
   - /experiment/wt103/gpt2.yaml
-  - override /model/gpt2model: gpt2-medium
+
+model:
+  config:
+    n_embd: 1024
+    n_head: 16
+    n_layer: 24
 
 datamodule:
   batch_size: 8  # Per GPU
