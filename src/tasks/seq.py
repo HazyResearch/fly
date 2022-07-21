@@ -8,7 +8,7 @@ from torchmetrics import MetricCollection
 from einops import rearrange
 
 from src.utils.utils import get_logger
-from src.utils.optim import group_parameters_for_optimizer
+from src.optim.param_grouping import group_parameters_for_optimizer
 
 log = get_logger(__name__)
 

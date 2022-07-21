@@ -5,7 +5,7 @@
 
 defaults:
   - override /trainer: default # choose trainer from 'configs/trainer/'
-  - override /model: gpt2
+  - override /model: gpt2-hf
   - override /datamodule: wt103-gpt2
   - override /optimizer: adamw
   - override /scheduler: linear-warmup
