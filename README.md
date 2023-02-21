@@ -55,7 +55,14 @@ If you use this codebase, or otherwise found our work valuable, please cite:
 @article{chen2021pixelated,
   title={Pixelated Butterfly: Simple and Efficient Sparse training for Neural Network Models},
   author={Chen, Beidi and Dao, Tri and Liang, Kaizhao and Yang, Jiaming and Song, Zhao and Rudra, Atri and R{\'e}, Christopher},
-  journal={arXiv preprint arXiv:2112.00029},
+  booktitle={International Conference on Learning Representations}
   year={2021}
+}
+@inproceedings{dao2022monarch,
+  title={Monarch: Expressive structured matrices for efficient and accurate training},
+  author={Dao, Tri and Chen, Beidi and Sohoni, Nimit S and Desai, Arjun and Poli, Michael and Grogan, Jessica and Liu, Alexander and Rao, Aniruddh and Rudra, Atri and R{\'e}, Christopher},
+  booktitle={International Conference on Machine Learning},
+  year={2022},
+  organization={PMLR}
 }
 ```
